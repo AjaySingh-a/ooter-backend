@@ -1,6 +1,5 @@
 package com.ooter.backend.config;
 
-import com.ooter.backend.config.JwtAuthFilter;
 import com.ooter.backend.security.CustomOAuth2SuccessHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -25,8 +24,31 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable())
 
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers(
+                    "/", // homepage (optional), will NOT trigger oauth
+                    "/api/auth/signup",
+                    "/api/auth/login",
+                    "/oauth2/" // allow frontend to initiate Google login manually
+                ).permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/upload/image").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/hoardings/").permitAll()
+
+                .requestMatchers(HttpMethod.POST, "/api/vendors").hasAuthority("ROLE_USER")
+                .requestMatchers(HttpMethod.GET, "/api/vendors/dashboard").hasAuthority("ROLE_VENDOR")
+                .requestMatchers(HttpMethod.POST, "/api/hoardings").hasAuthority("ROLE_VENDOR")
+                .requestMatchers("/api/hoardings/vendor/").hasAuthority("ROLE_VENDOR")
+
+                .requestMatchers("/api/bookings", "/api/bookings/", "/api/users/", "/api/cart/")
+                    .hasAnyAuthority("ROLE_USER", "ROLE_VENDOR")
+                .requestMatchers(HttpMethod.DELETE, "/api/cart/remove/")
+                    .hasAnyAuthority("ROLE_USER", "ROLE_VENDOR")
+
+                .anyRequest().authenticated()
+            )
+
             .oauth2Login(oauth2 -> oauth2
-                .authorizationEndpoint(authEndpoint -> authEndpoint
+                .authorizationEndpoint(auth -> auth
                     .baseUri("/oauth2/authorize")
                 )
                 .redirectionEndpoint(redir -> redir
@@ -35,26 +57,10 @@ public class SecurityConfig {
                 .successHandler(customOAuth2SuccessHandler)
             )
 
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/signup", "/api/auth/login").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/upload/image").permitAll() // ✅ Add this line
-                .requestMatchers(HttpMethod.GET, "/api/hoardings/**").permitAll()
-
-                .requestMatchers(HttpMethod.POST, "/api/vendors").hasAuthority("ROLE_USER")
-                .requestMatchers(HttpMethod.GET, "/api/vendors/dashboard").hasAuthority("ROLE_VENDOR")
-                .requestMatchers(HttpMethod.POST, "/api/hoardings").hasAuthority("ROLE_VENDOR")
-                .requestMatchers("/api/hoardings/vendor/**").hasAuthority("ROLE_VENDOR")
-
-                .requestMatchers("/api/bookings", "/api/bookings/**", "/api/users/**", "/api/cart/**")
-                    .hasAnyAuthority("ROLE_USER", "ROLE_VENDOR")
-                .requestMatchers(HttpMethod.DELETE, "/api/cart/remove/**")
-                    .hasAnyAuthority("ROLE_USER", "ROLE_VENDOR")
-
-                .anyRequest().authenticated()
-            )
             .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
+
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

@@ -19,12 +19,13 @@ public class AuthController {
     @PostMapping("/signup")
     public ResponseEntity<?> signup(@RequestBody SignupRequest request) {
         try {
-            LoginResponse response = authService.signup(request);
-            return ResponseEntity.ok(response);
+            String message = authService.signup(request);
+            return ResponseEntity.ok(new SuccessResponse(message));
         } catch (AuthException e) {
             return ResponseEntity.badRequest().body(new ErrorResponse("Signup failed", e.getMessage()));
         }
     }
+
 
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest request) {

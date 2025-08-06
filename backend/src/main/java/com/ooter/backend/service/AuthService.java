@@ -23,7 +23,7 @@ public class AuthService {
     private final BCryptPasswordEncoder passwordEncoder;
     private final GoogleTokenVerifier googleTokenVerifier;
 
-    public String signup(SignupRequest request) {
+    public LoginResponse signup(SignupRequest request) {
         if (userRepository.findByPhone(request.getPhone()).isPresent()) {
             throw new AuthException("Phone number already exists");
         }
@@ -51,8 +51,15 @@ public class AuthService {
             }
         }
 
-        userRepository.save(user);
-        return jwtUtil.generateToken(user.getPhone(), user.getRole().name());
+        user = userRepository.save(user);
+        String token = jwtUtil.generateToken(user.getPhone(), user.getRole().name());
+
+        return LoginResponse.builder()
+                .token(token)
+                .role(user.getRole())
+                .userId(user.getId())
+                .name(user.getName())
+                .build();
     }
 
     public LoginResponse login(LoginRequest request) {

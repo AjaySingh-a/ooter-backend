@@ -26,10 +26,13 @@ public class SecurityConfig {
 
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
-                    "/", // homepage (optional), will NOT trigger oauth
+                    "/", 
                     "/api/auth/signup",
                     "/api/auth/login",
-                    "/oauth2/" // allow frontend to initiate Google login manually
+                    "/oauth2/**",              // ✅ Allow full oauth2 flow
+                    "/login/",               // ✅ Allow internal login endpoints
+                    "/error",                  // ✅ Prevent redirect to HTML error page
+                    "/favicon.ico"             // Optional
                 ).permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/upload/image").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/hoardings/").permitAll()

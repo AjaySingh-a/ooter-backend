@@ -17,12 +17,12 @@ public class AuthController {
     private final AuthService authService;
 
     @PostMapping("/signup")
-    public ResponseEntity<String> signup(@RequestBody SignupRequest request) {
-        String result = authService.signup(request);
-        if (result.equals("Signup successful")) {
-            return ResponseEntity.ok(result);
-        } else {
-            return ResponseEntity.badRequest().body(result);
+    public ResponseEntity<?> signup(@RequestBody SignupRequest request) {
+        try {
+            String token = authService.signup(request);
+            return ResponseEntity.ok(new LoginResponse(token, Role.USER, null, request.getName()));
+        } catch (AuthException e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("Signup failed", e.getMessage()));
         }
     }
 

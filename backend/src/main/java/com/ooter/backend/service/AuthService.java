@@ -25,7 +25,7 @@ public class AuthService {
 
     public String signup(SignupRequest request) {
         if (userRepository.findByPhone(request.getPhone()).isPresent()) {
-            return "Phone number already exists";
+            throw new AuthException("Phone number already exists");
         }
 
         String generatedReferral = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
@@ -47,12 +47,12 @@ public class AuthService {
             if (referrer.isPresent()) {
                 user.setReferredBy(request.getReferredBy());
             } else {
-                return "Invalid referral code";
+                throw new AuthException("Invalid referral code");
             }
         }
 
         userRepository.save(user);
-        return "Signup successful";
+        return jwtUtil.generateToken(user.getPhone(), user.getRole().name());
     }
 
     public LoginResponse login(LoginRequest request) {

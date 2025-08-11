@@ -9,6 +9,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -30,6 +32,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final UserRepository userRepository;
+    private final CacheManager cacheManager;
 
     @Override
     protected void doFilterInternal(
@@ -56,11 +59,21 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
 
         String token = authHeader.substring(BEARER_PREFIX.length());
+        
+        if (isTokenBlacklisted(token)) {
+            throw new JwtException("Token has been invalidated");
+        }
+
         Claims claims = jwtUtil.parseToken(token);
         
         if (shouldAuthenticate(claims)) {
             authenticateUser(request, claims, token);
         }
+    }
+
+    private boolean isTokenBlacklisted(String token) {
+        Cache blacklistCache = cacheManager.getCache("blacklistedTokens");
+        return blacklistCache != null && blacklistCache.get(token) != null;
     }
 
     private boolean shouldAuthenticate(Claims claims) {
@@ -78,9 +91,28 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     }
 
     private Optional<User> findUser(String userIdentifier) {
-        return userIdentifier.contains("@") 
+        // Try cache first
+        Cache userCache = cacheManager.getCache("users");
+        if (userCache != null) {
+            User cachedUser = userCache.get(userIdentifier, User.class);
+            if (cachedUser != null) {
+                return Optional.of(cachedUser);
+            }
+        }
+
+        // Not in cache, fetch from database
+        Optional<User> user = userIdentifier.contains("@") 
             ? userRepository.findByEmail(userIdentifier)
             : userRepository.findByPhone(userIdentifier);
+
+        // Cache the result
+        user.ifPresent(u -> {
+            if (userCache != null) {
+                userCache.put(userIdentifier, u);
+            }
+        });
+        
+        return user;
     }
 
     private void setSecurityContext(HttpServletRequest request, User user, String role) {

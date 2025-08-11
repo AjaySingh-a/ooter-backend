@@ -5,11 +5,17 @@ import com.ooter.backend.repository.HoardingRepository;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-
+import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/hoardings")
@@ -18,6 +24,16 @@ import java.util.List;
 public class HoardingController {
 
     private final HoardingRepository hoardingRepository;
+    private static final DateTimeFormatter HTTP_HEADER_DATE_FORMAT = DateTimeFormatter.RFC_1123_DATE_TIME;
+
+    private Instant parseHttpDate(String httpDate) {
+        if (httpDate == null) return null;
+        try {
+            return ZonedDateTime.parse(httpDate, HTTP_HEADER_DATE_FORMAT).toInstant();
+        } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
 
     @PostMapping
     public ResponseEntity<?> createHoarding(@RequestBody Hoarding hoarding, @AuthenticationPrincipal User vendor) {
@@ -36,8 +52,6 @@ public class HoardingController {
         }
 
         hoarding.setBooked(hoarding.getStatus() == HoardingStatus.BOOKED);
-
-        // Safe: set pincode
         hoarding.setPinCode(hoarding.getPinCode());
 
         Hoarding saved = hoardingRepository.save(hoarding);
@@ -47,8 +61,19 @@ public class HoardingController {
     @GetMapping
     public ResponseEntity<List<HoardingResponse>> getAllHoardings(
             @RequestParam(required = false) String category,
-            @RequestParam(required = false) String city
-    ) {
+            @RequestParam(required = false) String city,
+            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
+        
+        Instant lastUpdate = Optional.ofNullable(hoardingRepository.findMaxUpdatedAt())
+                                   .orElse(Instant.now());
+        
+        if (ifModifiedSince != null) {
+            Instant modifiedSince = parseHttpDate(ifModifiedSince);
+            if (modifiedSince != null && !lastUpdate.isAfter(modifiedSince)) {
+                return ResponseEntity.status(304).build();
+            }
+        }
+
         List<Hoarding> hoardings;
 
         if (category != null && city != null) {
@@ -71,37 +96,105 @@ public class HoardingController {
             hoardings = hoardingRepository.findAll();
         }
 
-        return ResponseEntity.ok(hoardings.stream().map(HoardingResponse::new).toList());
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS))
+                .lastModified(lastUpdate)
+                .body(hoardings.stream().map(HoardingResponse::new).toList());
     }
 
     @GetMapping("/search")
-    public ResponseEntity<List<HoardingResponse>> searchByKeyword(@RequestParam String location) {
+    public ResponseEntity<List<HoardingResponse>> searchByKeyword(
+            @RequestParam String location,
+            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
+        
+        Instant lastUpdate = Optional.ofNullable(hoardingRepository.findMaxUpdatedAt())
+                                   .orElse(Instant.now());
+        
+        if (ifModifiedSince != null) {
+            Instant modifiedSince = parseHttpDate(ifModifiedSince);
+            if (modifiedSince != null && !lastUpdate.isAfter(modifiedSince)) {
+                return ResponseEntity.status(304).build();
+            }
+        }
+
         List<Hoarding> results = hoardingRepository
                 .findByLocationContainingIgnoreCaseOrCityContainingIgnoreCaseOrStateContainingIgnoreCase(
                         location, location, location);
-        return ResponseEntity.ok(results.stream().map(HoardingResponse::new).toList());
+        
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS))
+                .lastModified(lastUpdate)
+                .body(results.stream().map(HoardingResponse::new).toList());
     }
 
     @GetMapping("/nearby")
     public ResponseEntity<List<HoardingResponse>> getNearby(
             @RequestParam double lat,
             @RequestParam double lng,
-            @RequestParam(defaultValue = "20") double radius
-    ) {
+            @RequestParam(defaultValue = "20") double radius,
+            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
+        
+        Instant lastUpdate = Optional.ofNullable(hoardingRepository.findMaxUpdatedAt())
+                                   .orElse(Instant.now());
+        
+        if (ifModifiedSince != null) {
+            Instant modifiedSince = parseHttpDate(ifModifiedSince);
+            if (modifiedSince != null && !lastUpdate.isAfter(modifiedSince)) {
+                return ResponseEntity.status(304).build();
+            }
+        }
+
         List<Hoarding> results = hoardingRepository.findNearbyHoardings(lat, lng, radius);
-        return ResponseEntity.ok(results.stream().map(HoardingResponse::new).toList());
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(30, TimeUnit.MINUTES))
+                .lastModified(lastUpdate)
+                .body(results.stream().map(HoardingResponse::new).toList());
     }
 
     @GetMapping("/vendor/{ownerId}")
-    public ResponseEntity<List<HoardingResponse>> getVendorHoardings(@PathVariable Long ownerId) {
+    public ResponseEntity<List<HoardingResponse>> getVendorHoardings(
+            @PathVariable Long ownerId,
+            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
+        
+        Instant lastUpdate = Optional.ofNullable(hoardingRepository.findMaxUpdatedByOwner(ownerId))
+                                   .orElse(Instant.now());
+        
+        if (ifModifiedSince != null) {
+            Instant modifiedSince = parseHttpDate(ifModifiedSince);
+            if (modifiedSince != null && !lastUpdate.isAfter(modifiedSince)) {
+                return ResponseEntity.status(304).build();
+            }
+        }
+
         List<Hoarding> hoardings = hoardingRepository.findByOwnerId(ownerId);
-        return ResponseEntity.ok(hoardings.stream().map(HoardingResponse::new).toList());
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS))
+                .lastModified(lastUpdate)
+                .body(hoardings.stream().map(HoardingResponse::new).toList());
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<HoardingResponse> getById(@PathVariable Long id) {
+    public ResponseEntity<HoardingResponse> getById(
+            @PathVariable Long id,
+            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
+        
         return hoardingRepository.findById(id)
-                .map(h -> ResponseEntity.ok(new HoardingResponse(h)))
+                .map(hoarding -> {
+                    Instant lastUpdate = Optional.ofNullable(hoarding.getUpdatedAt())
+                                               .orElse(Instant.now());
+                    
+                    if (ifModifiedSince != null) {
+                        Instant modifiedSince = parseHttpDate(ifModifiedSince);
+                        if (modifiedSince != null && !lastUpdate.isAfter(modifiedSince)) {
+                            return ResponseEntity.status(304).<HoardingResponse>build();
+                        }
+                    }
+                    
+                    return ResponseEntity.ok()
+                            .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS))
+                            .lastModified(lastUpdate)
+                            .body(new HoardingResponse(hoarding));
+                })
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -116,7 +209,6 @@ public class HoardingController {
                 return ResponseEntity.status(403).body("You can only update your own listings");
             }
 
-            // ✅ Editable Fields
             existing.setName(updated.getName());
             existing.setLocation(updated.getLocation());
             existing.setCity(updated.getCity());
@@ -124,7 +216,7 @@ public class HoardingController {
             existing.setDistrict(updated.getDistrict());
             existing.setLandmark(updated.getLandmark());
             existing.setCountry(updated.getCountry());
-            existing.setPinCode(updated.getPinCode()); // ✅ Pincode
+            existing.setPinCode(updated.getPinCode());
 
             existing.setLatitude(updated.getLatitude());
             existing.setLongitude(updated.getLongitude());
@@ -205,7 +297,7 @@ public class HoardingController {
         private String sku;
         private String hshCode;
         private String gst;
-        private String pinCode; // ✅ NEW FIELD
+        private String pinCode;
 
         private boolean verifiedProperty;
         private boolean eyeCatching;
@@ -248,7 +340,7 @@ public class HoardingController {
             this.sku = h.getSku();
             this.hshCode = h.getHshCode();
             this.gst = h.getGst();
-            this.pinCode = h.getPinCode(); // ✅
+            this.pinCode = h.getPinCode();
 
             this.verifiedProperty = h.isVerifiedProperty();
             this.eyeCatching = h.isEyeCatching();

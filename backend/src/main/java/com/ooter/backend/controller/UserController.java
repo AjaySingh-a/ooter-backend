@@ -8,9 +8,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -26,10 +30,12 @@ public class UserController {
     private final JwtUtil jwtUtil;
     private final EmailService emailService;
 
-    // ✅ 1. GET current logged-in user
     @GetMapping("/me")
+    @Cacheable(value = "userProfile", key = "#user?.id ?: 'default'", unless = "#result == null || #result.body == null")
     public ResponseEntity<?> getCurrentUser(@AuthenticationPrincipal User user) {
-        if (user == null) return ResponseEntity.status(401).body("Unauthorized");
+        if (user == null) {
+            return ResponseEntity.status(401).body("Unauthorized");
+        }
 
         return ResponseEntity.ok(
                 new UserResponse(
@@ -51,40 +57,48 @@ public class UserController {
         );
     }
 
-    // ✅ 2. GET recent searches
     @GetMapping("/recent-searches")
-    public ResponseEntity<List<String>> getRecentSearches(HttpServletRequest request) {
-        String token = request.getHeader("Authorization").substring(7);
-        String phone = jwtUtil.extractUserIdentifier(token);
-        User user = userRepository.findByPhone(phone).orElse(null);
-
-        if (user == null) return ResponseEntity.status(401).build();
+    @Cacheable(value = "userSearches", key = "#userPrincipal?.id ?: 'default'", unless = "#result == null || #result.body == null")
+    public ResponseEntity<List<String>> getRecentSearches(@AuthenticationPrincipal User userPrincipal) {
+        if (userPrincipal == null) {
+            return ResponseEntity.status(401).build();
+        }
+        
+        User user = userRepository.findById(userPrincipal.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        
+        if (user.getRecentSearches() == null) {
+            user.setRecentSearches(new ArrayList<>());
+        }
+        
         return ResponseEntity.ok(user.getRecentSearches());
     }
 
-    // ✅ 3. POST recent search
     @PostMapping("/recent-searches")
-    public ResponseEntity<Void> addSearch(@RequestBody SearchRequest req, HttpServletRequest request) {
-        String token = request.getHeader("Authorization").substring(7);
-        String phone = jwtUtil.extractUserIdentifier(token);
-        User user = userRepository.findByPhone(phone).orElse(null);
+    @CacheEvict(value = "userSearches", key = "#user?.id ?: 'default'")
+    public ResponseEntity<Void> addSearch(@RequestBody SearchRequest req, @AuthenticationPrincipal User user) {
+        if (user == null) {
+            return ResponseEntity.status(401).build();
+        }
 
-        if (user == null) return ResponseEntity.status(401).build();
+        User freshUser = userRepository.findById(user.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
 
         String keyword = req.getQuery();
-        List<String> searches = user.getRecentSearches();
+        List<String> searches = freshUser.getRecentSearches() != null ? 
+                            freshUser.getRecentSearches() : new ArrayList<>();
+        
         searches.removeIf(s -> s.equalsIgnoreCase(keyword));
         searches.add(0, keyword);
         if (searches.size() > 5) {
             searches = searches.subList(0, 5);
         }
 
-        user.setRecentSearches(searches);
-        userRepository.save(user);
+        freshUser.setRecentSearches(searches);
+        userRepository.save(freshUser);
         return ResponseEntity.ok().build();
     }
 
-    // ✅ 4. Send OTP to email (REAL OTP via Gmail)
     @PostMapping("/send-email-otp")
     public ResponseEntity<?> sendOtp(@RequestBody Map<String, String> req, @AuthenticationPrincipal User user) {
         String email = req.get("email");
@@ -97,23 +111,19 @@ public class UserController {
         user.setOtpExpiry(LocalDateTime.now().plusMinutes(5));
         userRepository.save(user);
 
-        emailService.sendOtpEmail(email, otp); // ✅ send real email
+        emailService.sendOtpEmail(email, otp);
         return ResponseEntity.ok("OTP sent to email");
     }
 
-    // ✅ 5. Verify OTP
     @PostMapping("/verify-email-otp")
     public ResponseEntity<?> verifyOtp(@RequestBody Map<String, String> req, @AuthenticationPrincipal User user) {
         String otp = req.get("otp");
-
         if (otp == null || user.getEmailOtp() == null) {
             return ResponseEntity.badRequest().body("OTP missing");
         }
-
-        if (user.getOtpExpiry() != null && user.getOtpExpiry().isBefore(LocalDateTime.now())) {
+        if (user.getOtpExpiry().isBefore(LocalDateTime.now())) {
             return ResponseEntity.badRequest().body("OTP expired");
         }
-
         if (!otp.equals(user.getEmailOtp())) {
             return ResponseEntity.badRequest().body("Invalid OTP");
         }
@@ -125,8 +135,8 @@ public class UserController {
         return ResponseEntity.ok("Email verified");
     }
 
-    // ✅ 6. Update profile (only if OTP is verified)
     @PutMapping("/update-profile")
+    @CacheEvict(value = "userProfile", key = "#user?.id ?: 'default'")
     public ResponseEntity<?> updateProfile(@RequestBody Map<String, String> req, @AuthenticationPrincipal User user) {
         String first = req.get("firstName");
         String last = req.get("lastName");
@@ -140,29 +150,38 @@ public class UserController {
         if (first != null) {
             user.setName(first + (last != null ? " " + last : ""));
         }
-
-        if (gender != null) user.setGender(gender);
-        if (dobStr != null) user.setDateOfBirth(LocalDate.parse(dobStr));
+        if (gender != null) {
+            user.setGender(gender);
+        }
+        if (dobStr != null) {
+            user.setDateOfBirth(LocalDate.parse(dobStr));
+        }
 
         if (email != null && !email.equals(user.getEmail())) {
             if (!user.isEmailVerified()) {
                 return ResponseEntity.badRequest().body("Email not verified via OTP");
             }
             user.setEmail(email);
-            user.setEmailVerified(false); // reset after update
+            user.setEmailVerified(false);
         }
-        if (companyName != null) user.setCompanyName(companyName);
-        if (gstin != null) user.setGstin(gstin);    
-        if (pan != null) user.setPan(pan);
+
+        if (companyName != null) {
+            user.setCompanyName(companyName);
+        }
+        if (gstin != null) {
+            user.setGstin(gstin);
+        }    
+        if (pan != null) {
+            user.setPan(pan);
+        }
 
         userRepository.save(user);
         return ResponseEntity.ok("Profile updated");
     }
 
-    // ✅ DTOs
     @Data
-    static class SearchRequest {
-        private String query;
+    static class SearchRequest { 
+        private String query; 
     }
 
     @Data
@@ -179,7 +198,7 @@ public class UserController {
         private boolean referralUsed;
         private String gender;
         private LocalDate dateOfBirth;
-        private String companyName; // Added for vendor profile
+        private String companyName;
         private String gstin;
         private String pan;
     }

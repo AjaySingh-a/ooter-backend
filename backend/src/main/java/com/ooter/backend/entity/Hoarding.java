@@ -4,7 +4,10 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.Instant;
 import java.time.LocalDate;
+
+import org.springframework.data.annotation.LastModifiedDate;
 
 @Entity
 @Getter
@@ -30,6 +33,11 @@ public class Hoarding {
 
     @Enumerated(EnumType.STRING)
     private HoardingStatus status;
+
+    
+    @LastModifiedDate
+    @Column(nullable = false)
+    private Instant updatedAt = Instant.now();
 
     private String material;
     private String siteType;

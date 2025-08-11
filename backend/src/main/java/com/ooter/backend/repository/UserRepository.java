@@ -2,6 +2,7 @@ package com.ooter.backend.repository;
 
 import com.ooter.backend.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.Optional;
 
@@ -10,5 +11,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User>findByReferralCode(String referralCode);
     Optional<User> findByEmail(String email);
     Optional<User> findByEmailOrGoogleId(String email, String googleId);
+    @Query("SELECT u FROM User u LEFT JOIN FETCH u.recentSearches WHERE u.id = :id")
+    Optional<User> findByIdWithRecentSearches(Long id);
 
 }

@@ -60,7 +60,7 @@ public class User implements UserDetails {
     private String profilePicture;
 
     // ✅ Recent Searches
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.EAGER) // Changed from EAGER to LAZY
     @CollectionTable(name = "user_recent_searches", joinColumns = @JoinColumn(name = "user_id"))
     @Column(name = "recent_searches")
     private List<String> recentSearches = new ArrayList<>();

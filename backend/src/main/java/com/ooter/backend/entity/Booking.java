@@ -3,12 +3,15 @@ package com.ooter.backend.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import com.ooter.backend.entity.UploadedFile;
+
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
 import org.hibernate.annotations.CreationTimestamp;
 import org.springframework.cglib.core.Local;
+import org.springframework.data.annotation.LastModifiedDate;
 
 @Entity
 @Getter
@@ -48,6 +51,11 @@ public class Booking {
     @CreationTimestamp
     @Column(name = "created_at",nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+
+    @LastModifiedDate
+    @Column(nullable = false)
+    private Instant updatedAt = Instant.now();
 
 
     @Enumerated(EnumType.STRING)

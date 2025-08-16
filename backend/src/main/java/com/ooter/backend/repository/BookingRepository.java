@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -78,8 +79,13 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     """)
     List<Booking> findInProgressBookingsByVendor(@Param("vendorId") Long vendorId);
     List<Booking> findByHoardingIdAndStatusIn(Long hoardingId, List<BookingStatus> statuses);
+    // Add to BookingRepository
+    @Query("SELECT MAX(b.updatedAt) FROM Booking b WHERE b.user.id = :userId")
+    Instant findMaxUpdatedAtByUser(@Param("userId") Long userId);
 
     Optional<Booking> findByOrderId(String orderId);
+    @Query("SELECT MAX(b.updatedAt) FROM Booking b WHERE b.hoarding.owner.id = :vendorId")
+    Optional<Instant> findMaxUpdatedAtByVendor(@Param("vendorId") Long vendorId);
 
     @Query("SELECT SUM(b.totalAmount) FROM Booking b " +
            "WHERE b.vendor.id = :vendorId " +
@@ -99,6 +105,9 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("vendorId") Long vendorId,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
+
+
+    
 
 
 }

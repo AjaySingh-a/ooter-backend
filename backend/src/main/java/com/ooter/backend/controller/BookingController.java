@@ -1,35 +1,22 @@
 package com.ooter.backend.controller;
 
-import com.ooter.backend.dto.BookingDetailResponse;
-import com.ooter.backend.dto.BookingResponse;
+import java.time.temporal.ChronoUnit;
+import com.ooter.backend.dto.*;
 import com.ooter.backend.entity.*;
-import com.ooter.backend.repository.HoardingRepository;
-import com.ooter.backend.repository.UploadedFileRepository;
-import com.ooter.backend.service.FileStorageService;
-import com.ooter.backend.repository.UserRepository;
-import com.ooter.backend.service.BookingService;
-import com.ooter.backend.service.RazorpayService;
-import com.ooter.backend.repository.BookingRepository;
+import com.ooter.backend.repository.*;
+import com.ooter.backend.service.*;
 import com.razorpay.RazorpayException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
-import java.time.Duration;
-import java.time.LocalDate;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.time.*;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @RestController
@@ -306,16 +293,14 @@ public class BookingController {
 
             if (bookings == null || bookings.isEmpty()) {
                 log.info("No booked dates found for hoardingId: {}", hoardingId);
-                return ResponseEntity.ok(List.of()); // Empty list explicitly
+                return ResponseEntity.ok(List.of());
             }
 
             List<Map<String, String>> bookedDateRanges = bookings.stream()
-                .map(b -> {
-                    // Ensure dates are in ISO format (yyyy-MM-dd)
-                    String startDate = b.getStartDate() != null ? b.getStartDate().toString() : LocalDate.now().toString();
-                    String endDate = b.getEndDate() != null ? b.getEndDate().toString() : LocalDate.now().toString();
-                    return Map.of("startDate", startDate, "endDate", endDate);
-                })
+                .map(b -> Map.of(
+                    "startDate", b.getStartDate().toString(),
+                    "endDate", b.getEndDate().toString()
+                ))
                 .toList();
 
             log.info("Returning booked dates for hoardingId {}: {}", hoardingId, bookedDateRanges);
@@ -334,27 +319,103 @@ public class BookingController {
     }
 
     @GetMapping("/orders")
-    public ResponseEntity<?> getActiveBookings(@AuthenticationPrincipal User user) {
-        if (user == null) return ResponseEntity.status(401).body("Unauthorized");
+    public ResponseEntity<?> getActiveBookings(
+            @AuthenticationPrincipal User user,
+            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
+        
+        if (user == null) {
+            return ResponseEntity.status(401).body("Unauthorized");
+        }
 
-        List<Booking> active = bookingService.getBookingsByStatusList(
+        try {
+            Instant lastUpdate = bookingRepository.findMaxUpdatedAtByUser(user.getId());
+            if (lastUpdate == null) {
+                lastUpdate = Instant.now();
+            }
+
+            if (ifModifiedSince != null) {
+                try {
+                    Instant ifModifiedSinceInstant = Instant.parse(ifModifiedSince);
+                    if (!lastUpdate.isAfter(ifModifiedSinceInstant)) {
+                        return ResponseEntity.status(304).build();
+                    }
+                } catch (Exception e) {
+                    log.warn("Invalid If-Modified-Since header", e);
+                }
+            }
+
+            List<Booking> active = bookingService.getBookingsByStatusList(
                 user.getId(),
                 List.of(BookingStatus.CONFIRMED, BookingStatus.PENDING)
-        );
+            );
 
-        return ResponseEntity.ok(active.stream().map(BookingResponse::from).toList());
+            ResponseEntity.BodyBuilder builder = ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(10, TimeUnit.MINUTES));
+            
+            builder.lastModified(lastUpdate);
+
+            return builder.body(active.stream().map(BookingResponse::from).toList());
+
+        } catch (Exception e) {
+            log.error("Error fetching active bookings", e);
+            return ResponseEntity.internalServerError().body(
+                Map.of(
+                    "status", "error",
+                    "message", "Failed to fetch bookings",
+                    "error", e.getMessage()
+                )
+            );
+        }
     }
 
     @GetMapping("/cancelled")
-    public ResponseEntity<?> getCancelledBookings(@AuthenticationPrincipal User user) {
-        if (user == null) return ResponseEntity.status(401).body("Unauthorized");
+    public ResponseEntity<?> getCancelledBookings(
+            @AuthenticationPrincipal User user,
+            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
+        
+        if (user == null) {
+            return ResponseEntity.status(401).body("Unauthorized");
+        }
 
-        List<Booking> cancelled = bookingService.getBookingsByStatusList(
+        try {
+            Instant lastUpdate = bookingRepository.findMaxUpdatedAtByUser(user.getId());
+            if (lastUpdate == null) {
+                lastUpdate = Instant.now();
+            }
+
+            if (ifModifiedSince != null) {
+                try {
+                    Instant ifModifiedSinceInstant = Instant.parse(ifModifiedSince);
+                    if (!lastUpdate.isAfter(ifModifiedSinceInstant)) {
+                        return ResponseEntity.status(304).build();
+                    }
+                } catch (Exception e) {
+                    log.warn("Invalid If-Modified-Since header", e);
+                }
+            }
+
+            List<Booking> cancelled = bookingService.getBookingsByStatusList(
                 user.getId(),
                 List.of(BookingStatus.CANCELLED)
-        );
+            );
 
-        return ResponseEntity.ok(cancelled.stream().map(BookingResponse::from).toList());
+            ResponseEntity.BodyBuilder builder = ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(24, TimeUnit.HOURS));
+            
+            builder.lastModified(lastUpdate);
+
+            return builder.body(cancelled.stream().map(BookingResponse::from).toList());
+
+        } catch (Exception e) {
+            log.error("Error fetching cancelled bookings", e);
+            return ResponseEntity.internalServerError().body(
+                Map.of(
+                    "status", "error",
+                    "message", "Failed to fetch bookings",
+                    "error", e.getMessage()
+                )
+            );
+        }
     }
 
     @GetMapping("/{id}")
@@ -407,6 +468,14 @@ public class BookingController {
                 userRepository.save(referrer);
                 userRepository.save(user);
             }
+        }
+    }
+
+    private Instant parseHttpDate(String httpDate) {
+        try {
+            return Instant.parse(httpDate);
+        } catch (Exception e) {
+            return Instant.now();
         }
     }
 }

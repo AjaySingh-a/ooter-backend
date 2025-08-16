@@ -12,6 +12,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface HoardingRepository extends JpaRepository<Hoarding, Long> {
@@ -94,9 +95,10 @@ public interface HoardingRepository extends JpaRepository<Hoarding, Long> {
         )
     """)
     List<Hoarding> findAllActiveTabHoardings(@Param("vendorId") Long vendorId);
+
     @Query("SELECT MAX(h.updatedAt) FROM Hoarding h")
-    Instant findMaxUpdatedAt();
+    Optional<Instant> findMaxUpdatedAt();
 
     @Query("SELECT MAX(h.updatedAt) FROM Hoarding h WHERE h.owner.id = :ownerId")
-    Instant findMaxUpdatedByOwner(@Param("ownerId") Long ownerId);
+    Optional<Instant> findMaxUpdatedAtByOwner(@Param("ownerId") Long ownerId);
 }

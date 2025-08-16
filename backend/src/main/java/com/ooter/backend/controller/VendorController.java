@@ -6,7 +6,10 @@ import com.ooter.backend.repository.BookingRepository;
 import com.ooter.backend.repository.HoardingRepository;
 import com.ooter.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.*;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -14,9 +17,14 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/vendors")
@@ -27,9 +35,19 @@ public class VendorController {
     private final UserRepository userRepository;
     private final HoardingRepository hoardingRepository;
     private final BookingRepository bookingRepository;
+    private static final DateTimeFormatter HTTP_HEADER_DATE_FORMAT = DateTimeFormatter.RFC_1123_DATE_TIME;
 
-    // ✅ Added new verification document upload endpoint
+    private Instant parseHttpDate(String httpDate) {
+        if (httpDate == null) return null;
+        try {
+            return ZonedDateTime.parse(httpDate, HTTP_HEADER_DATE_FORMAT).toInstant();
+        } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
+
     @PostMapping("/upload-verification")
+    @CacheEvict(value = {"vendorDashboard", "vendorListings"}, key = "#vendor.id")
     public ResponseEntity<?> uploadVerificationDocs(
             @RequestParam("gstCertificate") MultipartFile gstCertificate,
             @RequestParam(value = "cinCertificate", required = false) MultipartFile cinCertificate,
@@ -44,24 +62,20 @@ public class VendorController {
         }
 
         try {
-            // Create upload folder if not exists
             String uploadDir = "uploads/vendor-certificates/";
             File folder = new File(uploadDir);
             if (!folder.exists()) folder.mkdirs();
 
-            // Save GST
             String gstFileName = "GST_" + vendor.getId() + "_" + gstCertificate.getOriginalFilename();
             File gstFile = new File(uploadDir + gstFileName);
             gstCertificate.transferTo(gstFile);
 
-            // Save CIN (optional)
             if (cinCertificate != null && !cinCertificate.isEmpty()) {
                 String cinFileName = "CIN_" + vendor.getId() + "_" + cinCertificate.getOriginalFilename();
                 File cinFile = new File(uploadDir + cinFileName);
                 cinCertificate.transferTo(cinFile);
             }
 
-            // Mark verified
             vendor.setVerified(true);
             userRepository.save(vendor);
 
@@ -72,6 +86,7 @@ public class VendorController {
     }
 
     @PostMapping
+    @CacheEvict(value = {"vendorDashboard", "vendorListings"}, key = "#user.id")
     public ResponseEntity<MessageResponse> registerAsVendor(
             @AuthenticationPrincipal User user,
             @RequestBody VendorRegistrationRequest request) {
@@ -99,11 +114,23 @@ public class VendorController {
     }
 
     @GetMapping("/dashboard")
-    public ResponseEntity<?> getVendorDashboard(@AuthenticationPrincipal User user) {
+    @Cacheable(value = "vendorDashboard", key = "#user.id", unless = "#result == null || #result.body == null")
+    public ResponseEntity<?> getVendorDashboard(
+            @AuthenticationPrincipal User user,
+            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
         if (user == null || user.getRole() != Role.VENDOR)
             return ResponseEntity.status(403).body(new MessageResponse("Access denied"));
 
         Long vendorId = user.getId();
+        Instant lastUpdate = bookingRepository.findMaxUpdatedAtByVendor(vendorId)
+                .orElse(Instant.now());
+
+        if (ifModifiedSince != null) {
+            Instant modifiedSince = parseHttpDate(ifModifiedSince);
+            if (modifiedSince != null && !lastUpdate.isAfter(modifiedSince)) {
+                return ResponseEntity.status(304).build();
+            }
+        }
 
         VendorDashboardResponse response = new VendorDashboardResponse(
                 hoardingRepository.countByOwnerId(vendorId),
@@ -116,28 +143,43 @@ public class VendorController {
                 bookingRepository.sumPreviousPaymentsByVendorId(vendorId),
                 bookingRepository.sumUpcomingPaymentsByVendorId(vendorId),
                 bookingRepository.countByVendorIdAndStatus(vendorId, BookingStatus.CONFIRMED),
-                hoardingRepository.countByOwnerId(vendorId) - bookingRepository.countByVendorIdAndStatus(vendorId, BookingStatus.CONFIRMED),
+                hoardingRepository.countByOwnerId(vendorId) - 
+                    bookingRepository.countByVendorIdAndStatus(vendorId, BookingStatus.CONFIRMED),
                 user.isVerified(),
                 user.isOnHold()
         );
 
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS))
+                .lastModified(lastUpdate)
+                .body(response);
     }
+
     @GetMapping("/sales-overview")
+    @Cacheable(value = "vendorSales", key = "{#user.id, #startDate, #endDate}", unless = "#result == null || #result.body == null")
     public ResponseEntity<?> getSalesOverview(
             @AuthenticationPrincipal User user,
             @RequestParam(required = false) String startDate,
-            @RequestParam(required = false) String endDate) {
+            @RequestParam(required = false) String endDate,
+            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
         
         if (user == null || user.getRole() != Role.VENDOR) {
             return ResponseEntity.status(403).body(new MessageResponse("Access denied"));
         }
 
-        // Default to current month if dates not provided
         LocalDate start = startDate != null ? LocalDate.parse(startDate) : LocalDate.now().withDayOfMonth(1);
         LocalDate end = endDate != null ? LocalDate.parse(endDate) : LocalDate.now();
 
-        // Calculate total sales for the period
+        Instant lastUpdate = bookingRepository.findMaxUpdatedAtByVendor(user.getId())
+                .orElse(Instant.now());
+
+        if (ifModifiedSince != null) {
+            Instant modifiedSince = parseHttpDate(ifModifiedSince);
+            if (modifiedSince != null && !lastUpdate.isAfter(modifiedSince)) {
+                return ResponseEntity.status(304).build();
+            }
+        }
+
         Double totalSales = bookingRepository.sumSalesByVendorAndDateRange(
                 user.getId(), 
                 start.atStartOfDay(), 
@@ -148,14 +190,12 @@ public class VendorController {
             totalSales = 0.0;
         }
 
-        // Get orders for the period
         List<Booking> bookings = bookingRepository.findByVendorIdAndDateRange(
                 user.getId(),
                 start.atStartOfDay(),
                 end.plusDays(1).atStartOfDay()
         );
 
-        // Convert to DTO
         List<SalesOverviewDTO.OrderDTO> orderDTOs = bookings.stream()
                 .map(b -> {
                     SalesOverviewDTO.OrderDTO dto = new SalesOverviewDTO.OrderDTO();
@@ -166,22 +206,37 @@ public class VendorController {
                 })
                 .toList();
 
-        // Create response
         SalesOverviewDTO response = new SalesOverviewDTO();
         response.setTotalSales(totalSales);
         response.setPeriod(start.toString() + " to " + end.toString());
         response.setDaysShowing((int) start.datesUntil(end.plusDays(1)).count());
         response.setOrders(orderDTOs);
 
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS))
+                .lastModified(lastUpdate)
+                .body(response);
     }
 
     @GetMapping("/listing-dashboard")
-    public ResponseEntity<?> getVendorListingStats(@AuthenticationPrincipal User user) {
-        if (user == null || user.getRole() != Role.VENDOR)
+    @Cacheable(value = "vendorListingStats", key = "#user.id", unless = "#result == null || #result.body == null")
+    public ResponseEntity<?> getVendorListingStats(
+            @AuthenticationPrincipal User user,
+            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
+        if (user == null || user.getRole() != Role.VENDOR) {
             return ResponseEntity.status(403).body(new MessageResponse("Access denied"));
+        }
 
         Long vendorId = user.getId();
+        Instant lastUpdate = hoardingRepository.findMaxUpdatedAtByOwner(vendorId)
+                .orElse(Instant.now());
+
+        if (ifModifiedSince != null) {
+            Instant modifiedSince = parseHttpDate(ifModifiedSince);
+            if (modifiedSince != null && !lastUpdate.isAfter(modifiedSince)) {
+                return ResponseEntity.status(304).build();
+            }
+        }
 
         int availableCount = hoardingRepository.findActiveAndAvailableByVendor(vendorId).stream()
                 .filter(h -> !bookingRepository.existsActiveBookingForHoarding(h.getId()))
@@ -200,13 +255,29 @@ public class VendorController {
                 0, 0, 0, 0, 0, 0
         );
 
-        return ResponseEntity.ok(stats);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(30, TimeUnit.MINUTES))
+                .lastModified(lastUpdate)
+                .body(stats);
     }
 
     @GetMapping("/bookings/in-progress")
-    public ResponseEntity<?> getInProgressBookings(@AuthenticationPrincipal User user) {
+    @Cacheable(value = "inProgressBookings", key = "#user.id", unless = "#result == null || #result.body == null")
+    public ResponseEntity<?> getInProgressBookings(
+            @AuthenticationPrincipal User user,
+            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
         if (user == null || user.getRole() != Role.VENDOR)
             return ResponseEntity.status(403).body(new MessageResponse("Access denied"));
+
+        Instant lastUpdate = bookingRepository.findMaxUpdatedAtByVendor(user.getId())
+                .orElse(Instant.now());
+
+        if (ifModifiedSince != null) {
+            Instant modifiedSince = parseHttpDate(ifModifiedSince);
+            if (modifiedSince != null && !lastUpdate.isAfter(modifiedSince)) {
+                return ResponseEntity.status(304).build();
+            }
+        }
 
         List<Booking> inProgressBookings = bookingRepository.findInProgressBookingsByVendor(user.getId());
 
@@ -214,11 +285,18 @@ public class VendorController {
                 .map(BookingProgressResponse::from)
                 .toList();
 
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(30, TimeUnit.MINUTES))
+                .lastModified(lastUpdate)
+                .body(response);
     }
 
     @GetMapping("/bookings/{orderId}")
-    public ResponseEntity<?> getBookingDetail(@AuthenticationPrincipal User user, @PathVariable String orderId) {
+    @Cacheable(value = "bookingDetails", key = "#orderId", unless = "#result == null || #result.body == null")
+    public ResponseEntity<?> getBookingDetail(
+            @AuthenticationPrincipal User user, 
+            @PathVariable String orderId,
+            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
         if (user == null || user.getRole() != Role.VENDOR)
             return ResponseEntity.status(403).body(new MessageResponse("Access denied"));
 
@@ -226,31 +304,46 @@ public class VendorController {
         if (optional.isEmpty()) return ResponseEntity.status(404).body(new MessageResponse("Booking not found"));
 
         Booking booking = optional.get();
+        Instant lastUpdate = booking.getUpdatedAt() != null ? booking.getUpdatedAt() : Instant.now();
+
+        if (ifModifiedSince != null) {
+            Instant modifiedSince = parseHttpDate(ifModifiedSince);
+            if (modifiedSince != null && !lastUpdate.isAfter(modifiedSince)) {
+                return ResponseEntity.status(304).build();
+            }
+        }
 
         if (!booking.getHoarding().getOwner().getId().equals(user.getId())) {
             return ResponseEntity.status(403).body(new MessageResponse("Access denied"));
         }
 
         BookingProgressResponse response = BookingProgressResponse.from(booking);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS))
+                .lastModified(lastUpdate)
+                .body(response);
     }
 
     @PostMapping("/bookings/{orderId}/media")
+    @CacheEvict(value = {"inProgressBookings", "bookingDetails"}, allEntries = true)
     public ResponseEntity<?> markMediaDownloaded(@AuthenticationPrincipal User user, @PathVariable String orderId) {
         return updateBookingStep(user, orderId, "media");
     }
 
     @PostMapping("/bookings/{orderId}/printing")
+    @CacheEvict(value = {"inProgressBookings", "bookingDetails"}, allEntries = true)
     public ResponseEntity<?> markPrintingStarted(@AuthenticationPrincipal User user, @PathVariable String orderId) {
         return updateBookingStep(user, orderId, "printing");
     }
 
     @PostMapping("/bookings/{orderId}/mounting")
+    @CacheEvict(value = {"inProgressBookings", "bookingDetails"}, allEntries = true)
     public ResponseEntity<?> markMountingStarted(@AuthenticationPrincipal User user, @PathVariable String orderId) {
         return updateBookingStep(user, orderId, "mounting");
     }
 
     @PostMapping("/bookings/{orderId}/live")
+    @CacheEvict(value = {"inProgressBookings", "bookingDetails"}, allEntries = true)
     public ResponseEntity<?> markSiteLive(@AuthenticationPrincipal User user, @PathVariable String orderId) {
         return updateBookingStep(user, orderId, "live");
     }
@@ -295,33 +388,52 @@ public class VendorController {
     }
 
     @GetMapping("/booked-listings")
-    public ResponseEntity<?> getBookedListings(@AuthenticationPrincipal User user,
-                                               @RequestParam(defaultValue = "0") int page,
-                                               @RequestParam(defaultValue = "10") int size,
-                                               @RequestParam(defaultValue = "id,desc") String[] sort) {
+    @Cacheable(value = "vendorListings", key = "{#user.id, 'booked', #page, #size, #sort}", unless = "#result == null || #result.body == null")
+    public ResponseEntity<?> getBookedListings(
+            @AuthenticationPrincipal User user,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "id,desc") String[] sort,
+            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
         if (user == null || user.getRole() != Role.VENDOR)
             return ResponseEntity.status(403).body(new MessageResponse("Access denied"));
 
         Pageable pageable = PageRequest.of(page, size, getSortFrom(sort));
-        return getListingsByStatus(user, HoardingStatus.BOOKED, pageable);
+        return getListingsByStatus(user, HoardingStatus.BOOKED, pageable, ifModifiedSince);
     }
 
     @GetMapping("/non-active-listings")
-    public ResponseEntity<?> getNonActiveListings(@AuthenticationPrincipal User user,
-                                                  @RequestParam(defaultValue = "0") int page,
-                                                  @RequestParam(defaultValue = "10") int size,
-                                                  @RequestParam(defaultValue = "id,desc") String[] sort) {
+    @Cacheable(value = "vendorListings", key = "{#user.id, 'non-active', #page, #size, #sort}", unless = "#result == null || #result.body == null")
+    public ResponseEntity<?> getNonActiveListings(
+            @AuthenticationPrincipal User user,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "id,desc") String[] sort,
+            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
         if (user == null || user.getRole() != Role.VENDOR)
             return ResponseEntity.status(403).body(new MessageResponse("Access denied"));
 
         Pageable pageable = PageRequest.of(page, size, getSortFrom(sort));
-        return getListingsByStatus(user, HoardingStatus.NON_ACTIVE, pageable);
+        return getListingsByStatus(user, HoardingStatus.NON_ACTIVE, pageable, ifModifiedSince);
     }
 
     @GetMapping("/active-listings")
-    public ResponseEntity<?> getActiveListings(@AuthenticationPrincipal User user) {
+    @Cacheable(value = "vendorListings", key = "{#user.id, 'active'}", unless = "#result == null || #result.body == null")
+    public ResponseEntity<?> getActiveListings(
+            @AuthenticationPrincipal User user,
+            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
         if (user == null || user.getRole() != Role.VENDOR)
             return ResponseEntity.status(403).body(new MessageResponse("Access denied"));
+
+        Instant lastUpdate = hoardingRepository.findMaxUpdatedAtByOwner(user.getId())
+                .orElse(Instant.now());
+
+        if (ifModifiedSince != null) {
+            Instant modifiedSince = parseHttpDate(ifModifiedSince);
+            if (modifiedSince != null && !lastUpdate.isAfter(modifiedSince)) {
+                return ResponseEntity.status(304).build();
+            }
+        }
 
         List<Hoarding> hoardings = hoardingRepository.findAllActiveTabHoardings(user.getId());
 
@@ -332,19 +444,25 @@ public class VendorController {
                 })
                 .toList();
 
-        return ResponseEntity.ok(filtered);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(30, TimeUnit.MINUTES))
+                .lastModified(lastUpdate)
+                .body(filtered);
     }
 
     @GetMapping("/available-listings")
-    public ResponseEntity<?> getAvailableListings(@AuthenticationPrincipal User user,
-                                              @RequestParam(defaultValue = "0") int page,
-                                              @RequestParam(defaultValue = "10") int size,
-                                              @RequestParam(defaultValue = "id,desc") String[] sort) {
+    @Cacheable(value = "vendorListings", key = "{#user.id, 'available', #page, #size, #sort}", unless = "#result == null || #result.body == null")
+    public ResponseEntity<?> getAvailableListings(
+            @AuthenticationPrincipal User user,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "id,desc") String[] sort,
+            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
         if (user == null || user.getRole() != Role.VENDOR)
             return ResponseEntity.status(403).body(new MessageResponse("Access denied"));
 
         Pageable pageable = PageRequest.of(page, size, getSortFrom(sort));
-        return getListingsByStatus(user, HoardingStatus.AVAILABLE, pageable);
+        return getListingsByStatus(user, HoardingStatus.AVAILABLE, pageable, ifModifiedSince);
     }
 
     private Sort getSortFrom(String[] sort) {
@@ -354,7 +472,22 @@ public class VendorController {
         return Sort.by(sortDirection, sortField);
     }
 
-    private ResponseEntity<?> getListingsByStatus(User user, HoardingStatus status, Pageable pageable) {
+    private ResponseEntity<?> getListingsByStatus(
+            User user, 
+            HoardingStatus status, 
+            Pageable pageable,
+            String ifModifiedSince) {
+        
+        Instant lastUpdate = hoardingRepository.findMaxUpdatedAtByOwner(user.getId())
+                .orElse(Instant.now());
+
+        if (ifModifiedSince != null) {
+            Instant modifiedSince = parseHttpDate(ifModifiedSince);
+            if (modifiedSince != null && !lastUpdate.isAfter(modifiedSince)) {
+                return ResponseEntity.status(304).build();
+            }
+        }
+
         Page<Hoarding> hoardingsPage;
 
         switch (status) {
@@ -372,6 +505,9 @@ public class VendorController {
                 })
                 .toList();
 
-        return ResponseEntity.ok(new PageImpl<>(responseList, pageable, hoardingsPage.getTotalElements()));
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(30, TimeUnit.MINUTES))
+                .lastModified(lastUpdate)
+                .body(new PageImpl<>(responseList, pageable, hoardingsPage.getTotalElements()));
     }
 }

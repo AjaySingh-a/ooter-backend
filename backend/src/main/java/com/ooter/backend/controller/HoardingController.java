@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -13,6 +14,7 @@ import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -64,7 +66,7 @@ public class HoardingController {
             @RequestParam(required = false) String city,
             @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
         
-        Instant lastUpdate = Optional.ofNullable(hoardingRepository.findMaxUpdatedAt())
+        Instant lastUpdate = hoardingRepository.findMaxUpdatedAt()
                                    .orElse(Instant.now());
         
         if (ifModifiedSince != null) {
@@ -97,6 +99,7 @@ public class HoardingController {
         }
 
         return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
                 .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS))
                 .lastModified(lastUpdate)
                 .body(hoardings.stream().map(HoardingResponse::new).toList());
@@ -107,7 +110,13 @@ public class HoardingController {
             @RequestParam String location,
             @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
         
-        Instant lastUpdate = Optional.ofNullable(hoardingRepository.findMaxUpdatedAt())
+        if (location == null || location.trim().isEmpty()) {
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Collections.emptyList());
+        }
+        
+        Instant lastUpdate = hoardingRepository.findMaxUpdatedAt()
                                    .orElse(Instant.now());
         
         if (ifModifiedSince != null) {
@@ -122,6 +131,7 @@ public class HoardingController {
                         location, location, location);
         
         return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
                 .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS))
                 .lastModified(lastUpdate)
                 .body(results.stream().map(HoardingResponse::new).toList());
@@ -134,7 +144,7 @@ public class HoardingController {
             @RequestParam(defaultValue = "20") double radius,
             @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
         
-        Instant lastUpdate = Optional.ofNullable(hoardingRepository.findMaxUpdatedAt())
+        Instant lastUpdate = hoardingRepository.findMaxUpdatedAt()
                                    .orElse(Instant.now());
         
         if (ifModifiedSince != null) {
@@ -146,6 +156,7 @@ public class HoardingController {
 
         List<Hoarding> results = hoardingRepository.findNearbyHoardings(lat, lng, radius);
         return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
                 .cacheControl(CacheControl.maxAge(30, TimeUnit.MINUTES))
                 .lastModified(lastUpdate)
                 .body(results.stream().map(HoardingResponse::new).toList());
@@ -156,7 +167,7 @@ public class HoardingController {
             @PathVariable Long ownerId,
             @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
         
-        Instant lastUpdate = Optional.ofNullable(hoardingRepository.findMaxUpdatedByOwner(ownerId))
+        Instant lastUpdate = hoardingRepository.findMaxUpdatedAtByOwner(ownerId)
                                    .orElse(Instant.now());
         
         if (ifModifiedSince != null) {
@@ -168,6 +179,7 @@ public class HoardingController {
 
         List<Hoarding> hoardings = hoardingRepository.findByOwnerId(ownerId);
         return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
                 .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS))
                 .lastModified(lastUpdate)
                 .body(hoardings.stream().map(HoardingResponse::new).toList());
@@ -191,6 +203,7 @@ public class HoardingController {
                     }
                     
                     return ResponseEntity.ok()
+                            .contentType(MediaType.APPLICATION_JSON)
                             .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS))
                             .lastModified(lastUpdate)
                             .body(new HoardingResponse(hoarding));

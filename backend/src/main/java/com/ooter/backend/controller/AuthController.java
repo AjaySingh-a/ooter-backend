@@ -26,7 +26,6 @@ public class AuthController {
         }
     }
 
-
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest request) {
         try {
@@ -47,4 +46,43 @@ public class AuthController {
                 .body(new ErrorResponse("Google authentication failed", e.getMessage()));
         }
     }
+
+    // ✅ NEW OTP ENDPOINTS
+    @PostMapping("/send-otp")
+    public ResponseEntity<?> sendOtp(@RequestBody OtpRequest request) {
+        try {
+            String message = authService.sendOtp(request.getPhone());
+            return ResponseEntity.ok(new SuccessResponse(message));
+        } catch (AuthException e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("OTP sending failed", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/verify-otp")
+    public ResponseEntity<?> verifyOtp(@RequestBody VerifyOtpRequest request) {
+        try {
+            String message = authService.verifyOtp(request.getPhone(), request.getOtp());
+            return ResponseEntity.ok(new SuccessResponse(message));
+        } catch (AuthException e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("OTP verification failed", e.getMessage()));
+        }
+    }
+}
+
+// ✅ DTO Classes (same file mein ya alag file mein rakho)
+class OtpRequest {
+    private String phone;
+    
+    public String getPhone() { return phone; }
+    public void setPhone(String phone) { this.phone = phone; }
+}
+
+class VerifyOtpRequest {
+    private String phone;
+    private String otp;
+    
+    public String getPhone() { return phone; }
+    public void setPhone(String phone) { this.phone = phone; }
+    public String getOtp() { return otp; }
+    public void setOtp(String otp) { this.otp = otp; }
 }

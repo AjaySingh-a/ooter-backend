@@ -30,8 +30,49 @@ public class AuthService {
     private final ConcurrentHashMap<String, OtpData> otpStorage = new ConcurrentHashMap<>();
 
     public String signup(SignupRequest request) {
+        // Validate required fields
+        if (request.getName() == null || request.getName().trim().isEmpty()) {
+            throw new AuthException("Name is required");
+        }
+        
+        if (request.getPhone() == null || request.getPhone().length() != 10 || 
+            !request.getPhone().matches("\\d+")) {
+            throw new AuthException("Valid 10-digit phone number is required");
+        }
+        
+        if (request.getEmail() == null || request.getEmail().trim().isEmpty() || 
+            !request.getEmail().contains("@")) {
+            throw new AuthException("Valid email is required");
+        }
+        
+        // Enhanced password validation
+        if (request.getPassword() == null || request.getPassword().length() < 8) {
+            throw new AuthException("Password must be at least 8 characters");
+        }
+        
+        // Check password complexity
+        String password = request.getPassword();
+        if (!password.matches(".*[A-Z].*")) {
+            throw new AuthException("Password must contain at least one capital letter");
+        }
+        if (!password.matches(".*[a-z].*")) {
+            throw new AuthException("Password must contain at least one small letter");
+        }
+        if (!password.matches(".*\\d.*")) {
+            throw new AuthException("Password must contain at least one numeric character");
+        }
+        if (!password.matches(".*[!@#$%^&*(),.?\":{}|<>].*")) {
+            throw new AuthException("Password must contain at least one special character");
+        }
+        
+        // Check if phone already exists
         if (userRepository.findByPhone(request.getPhone()).isPresent()) {
             throw new AuthException("Phone number already exists");
+        }
+        
+        // Check if email already exists
+        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+            throw new AuthException("Email already exists");
         }
 
         String generatedReferral = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
@@ -62,14 +103,15 @@ public class AuthService {
     }
 
     public LoginResponse login(LoginRequest request) {
-        User user = userRepository.findByPhone(request.getPhone())
-                .orElseThrow(() -> new RuntimeException("Invalid phone number"));
+        // Try to find user by phone OR email
+        User user = userRepository.findByPhoneOrEmail(request.getIdentifier())
+                .orElseThrow(() -> new RuntimeException("Invalid phone number or email"));
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new RuntimeException("Invalid password");
         }
 
-        String token = jwtUtil.generateToken(user.getPhone(), user.getRole().name());
+        String token = jwtUtil.generateToken(user.getPhone() != null ? user.getPhone() : user.getEmail(), user.getRole().name());
 
         return LoginResponse.builder()
                 .token(token)
@@ -102,6 +144,11 @@ public class AuthService {
             throw new AuthException("Phone number already registered");
         }
         
+        // Validate phone format
+        if (phone == null || phone.length() != 10 || !phone.matches("\\d+")) {
+            throw new AuthException("Invalid phone number format");
+        }
+        
         // Generate 6-digit OTP
         String otp = String.format("%06d", new Random().nextInt(999999));
         
@@ -109,13 +156,18 @@ public class AuthService {
         long expiryTime = System.currentTimeMillis() + 5 * 60 * 1000;
         otpStorage.put(phone, new OtpData(otp, expiryTime));
         
+        // Log OTP for debugging
+        System.out.println("OTP for " + phone + ": " + otp);
+        
         // ✅ Fast2SMS se SMS bhejo
         try {
             String message = "Your OTP for Ooter app is: " + otp + ". Valid for 5 minutes.";
             fast2SmsService.sendSms(phone, message);
             return "OTP sent successfully";
         } catch (Exception e) {
-            System.out.println("SMS failed, using fallback. OTP for " + phone + ": " + otp);
+            // Log the error but don't throw - use fallback for development
+            System.out.println("SMS failed: " + e.getMessage());
+            System.out.println("OTP for " + phone + ": " + otp);
             return "OTP sent successfully (fallback)";
         }
     }

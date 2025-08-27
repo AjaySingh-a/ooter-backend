@@ -23,6 +23,9 @@ public class AuthController {
             return ResponseEntity.ok(new SuccessResponse(message));
         } catch (AuthException e) {
             return ResponseEntity.badRequest().body(new ErrorResponse("Signup failed", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse("Server error", "Signup failed due to server error"));
         }
     }
 
@@ -55,6 +58,9 @@ public class AuthController {
             return ResponseEntity.ok(new SuccessResponse(message));
         } catch (AuthException e) {
             return ResponseEntity.badRequest().body(new ErrorResponse("OTP sending failed", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse("Server error", "Failed to send OTP"));
         }
     }
 
@@ -65,6 +71,9 @@ public class AuthController {
             return ResponseEntity.ok(new SuccessResponse(message));
         } catch (AuthException e) {
             return ResponseEntity.badRequest().body(new ErrorResponse("OTP verification failed", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse("Server error", "Failed to verify OTP"));
         }
     }
 }

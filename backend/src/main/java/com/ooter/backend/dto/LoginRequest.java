@@ -1,13 +1,16 @@
 package com.ooter.backend.dto;
 
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
 public class LoginRequest {
-    private String phone;
+    private String identifier; // Can be phone OR email
     private String password;
     private boolean isGoogleLogin;
 }

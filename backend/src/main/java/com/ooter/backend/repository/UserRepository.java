@@ -21,4 +21,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     
     @Query("SELECT u FROM User u LEFT JOIN FETCH u.recentSearches WHERE u.id = :id")
     Optional<User> findByIdWithRecentSearches(Long id);
+    
+    // ✅ Forgot Password - Find user by reset token
+    Optional<User> findByResetToken(String resetToken);
 }

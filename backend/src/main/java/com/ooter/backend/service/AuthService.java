@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
@@ -25,6 +26,7 @@ public class AuthService {
     private final BCryptPasswordEncoder passwordEncoder;
     private final GoogleTokenVerifier googleTokenVerifier;
     private final Fast2SMS fast2SmsService; // ✅ Fast2SMS service inject karo
+    private final EmailService emailService; // ✅ Email service for password reset
     
     // In-memory storage for OTP
     private final ConcurrentHashMap<String, OtpData> otpStorage = new ConcurrentHashMap<>();
@@ -237,5 +239,84 @@ public class AuthService {
         
         public String getOtp() { return otp; }
         public long getExpiryTime() { return expiryTime; }
+    }
+
+    // ✅ Forgot Password Method
+    public String forgotPassword(String email) {
+        // Find user by email
+        Optional<User> userOpt = userRepository.findByEmail(email);
+        if (userOpt.isEmpty()) {
+            throw new AuthException("No user found with this email address");
+        }
+
+        User user = userOpt.get();
+        
+        // Generate reset token
+        String resetToken = UUID.randomUUID().toString();
+        LocalDateTime expiryTime = LocalDateTime.now().plusHours(1); // 1 hour expiry
+        
+        // Save reset token to user
+        user.setResetToken(resetToken);
+        user.setResetTokenExpiry(expiryTime);
+        userRepository.save(user);
+        
+        // Send email with reset link
+        try {
+            emailService.sendPasswordResetEmail(email, resetToken, user.getName());
+            return "Password reset link sent to your email";
+        } catch (Exception e) {
+            // Remove the token if email fails
+            user.setResetToken(null);
+            user.setResetTokenExpiry(null);
+            userRepository.save(user);
+            throw new AuthException("Failed to send reset email. Please try again.");
+        }
+    }
+
+    // ✅ Reset Password Method
+    public String resetPassword(String token, String newPassword) {
+        // Find user by reset token
+        Optional<User> userOpt = userRepository.findByResetToken(token);
+        if (userOpt.isEmpty()) {
+            throw new AuthException("Invalid or expired reset token");
+        }
+
+        User user = userOpt.get();
+        
+        // Check if token is expired
+        if (user.getResetTokenExpiry().isBefore(LocalDateTime.now())) {
+            // Clear expired token
+            user.setResetToken(null);
+            user.setResetTokenExpiry(null);
+            userRepository.save(user);
+            throw new AuthException("Reset token has expired. Please request a new one.");
+        }
+        
+        // Validate new password
+        if (newPassword == null || newPassword.length() < 8) {
+            throw new AuthException("Password must be at least 8 characters");
+        }
+        
+        // Check password complexity
+        if (!newPassword.matches(".*[A-Z].*")) {
+            throw new AuthException("Password must contain at least one capital letter");
+        }
+        if (!newPassword.matches(".*[a-z].*")) {
+            throw new AuthException("Password must contain at least one small letter");
+        }
+        if (!newPassword.matches(".*\\d.*")) {
+            throw new AuthException("Password must contain at least one numeric character");
+        }
+        if (!newPassword.matches(".*[!@#$%^&*(),.?\":{}|<>].*")) {
+            throw new AuthException("Password must contain at least one special character");
+        }
+        
+        // Update password and clear reset token
+        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setResetToken(null);
+        user.setResetTokenExpiry(null);
+        userRepository.save(user);
+        
+        return "Password reset successfully";
     }
 }

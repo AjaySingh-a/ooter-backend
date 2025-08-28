@@ -18,6 +18,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import org.springframework.cache.annotation.CacheEvict;
 
 @RestController
 @RequestMapping("/api/hoardings")
@@ -38,6 +39,7 @@ public class HoardingController {
     }
 
     @PostMapping
+    @CacheEvict(value = {"vendorListingStats", "vendorDashboard", "vendorListings"}, allEntries = true)
     public ResponseEntity<?> createHoarding(@RequestBody Hoarding hoarding, @AuthenticationPrincipal User vendor) {
         if (vendor == null || vendor.getRole() != Role.VENDOR) {
             return ResponseEntity.status(403).body("Only vendors can create hoardings");
@@ -212,6 +214,7 @@ public class HoardingController {
     }
 
     @PutMapping("/{id}")
+    @CacheEvict(value = {"vendorListingStats", "vendorDashboard", "vendorListings"}, allEntries = true)
     public ResponseEntity<?> updateHoarding(@PathVariable Long id, @RequestBody Hoarding updated, @AuthenticationPrincipal User vendor) {
         if (vendor == null || vendor.getRole() != Role.VENDOR) {
             return ResponseEntity.status(403).body("Only vendors can update hoardings");

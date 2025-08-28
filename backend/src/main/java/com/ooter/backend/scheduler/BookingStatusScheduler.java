@@ -6,6 +6,7 @@ import com.ooter.backend.repository.BookingRepository;
 import com.ooter.backend.repository.HoardingRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -20,6 +21,7 @@ public class BookingStatusScheduler {
     private final BookingRepository bookingRepository;
 
     @Scheduled(cron = "0 0 2 * * ?") // runs daily at 2:00 AM
+    @CacheEvict(value = {"vendorListingStats", "vendorDashboard", "vendorListings"}, allEntries = true)
     public void updateAvailableHoardings() {
         List<Hoarding> bookedHoardings = hoardingRepository.findByStatus(HoardingStatus.BOOKED);
 

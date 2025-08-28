@@ -76,6 +76,33 @@ public class AuthController {
                 .body(new ErrorResponse("Server error", "Failed to verify OTP"));
         }
     }
+
+    // ✅ FORGOT PASSWORD ENDPOINTS
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequest request) {
+        try {
+            String message = authService.forgotPassword(request.getEmail());
+            return ResponseEntity.ok(new SuccessResponse(message));
+        } catch (AuthException e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("Password reset failed", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse("Server error", "Failed to process password reset request"));
+        }
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody ResetPasswordRequest request) {
+        try {
+            String message = authService.resetPassword(request.getToken(), request.getNewPassword());
+            return ResponseEntity.ok(new SuccessResponse(message));
+        } catch (AuthException e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("Password reset failed", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse("Server error", "Failed to reset password"));
+        }
+    }
 }
 
 // ✅ DTO Classes (same file mein ya alag file mein rakho)

@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.cache.annotation.CacheEvict;
 
 import java.io.IOException;
 import java.time.LocalDate;
@@ -121,6 +122,7 @@ public class BookingService {
         }
     }
 
+    @CacheEvict(value = {"vendorListingStats", "vendorDashboard", "vendorListings"}, allEntries = true)
     private void updateHoardingStatus(Hoarding hoarding, HoardingStatus status) {
         if (hoarding.getStatus() == HoardingStatus.ACTIVE || hoarding.getStatus() == HoardingStatus.AVAILABLE) {
             hoarding.setStatus(status);

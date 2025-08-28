@@ -80,6 +80,10 @@ public class User implements UserDetails {
     private LocalDateTime otpExpiry;
     private boolean emailVerified = false;
 
+    // ✅ Password Reset fields
+    private String resetToken;
+    private LocalDateTime resetTokenExpiry;
+
     // ✅ Spring Security Methods
     @Override
     @JsonIgnore

@@ -91,10 +91,24 @@ public class AuthController {
         }
     }
 
-    @PostMapping("/reset-password")
-    public ResponseEntity<?> resetPassword(@RequestBody ResetPasswordRequest request) {
+    // ✅ OTP-BASED FORGOT PASSWORD ENDPOINTS
+    @PostMapping("/verify-forgot-password-otp")
+    public ResponseEntity<?> verifyForgotPasswordOtp(@RequestBody VerifyForgotPasswordOtpRequest request) {
         try {
-            String message = authService.resetPassword(request.getToken(), request.getNewPassword());
+            String message = authService.verifyForgotPasswordOtp(request.getEmail(), request.getOtp());
+            return ResponseEntity.ok(new SuccessResponse(message));
+        } catch (AuthException e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("OTP verification failed", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse("Server error", "Failed to verify OTP"));
+        }
+    }
+
+    @PostMapping("/reset-password-after-otp")
+    public ResponseEntity<?> resetPasswordAfterOtp(@RequestBody ResetPasswordAfterOtpRequest request) {
+        try {
+            String message = authService.resetPasswordAfterOtp(request.getEmail(), request.getNewPassword());
             return ResponseEntity.ok(new SuccessResponse(message));
         } catch (AuthException e) {
             return ResponseEntity.badRequest().body(new ErrorResponse("Password reset failed", e.getMessage()));

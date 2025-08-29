@@ -241,7 +241,7 @@ public class AuthService {
         public long getExpiryTime() { return expiryTime; }
     }
 
-    // ✅ Forgot Password Method
+    // ✅ Forgot Password Method - OTP Based
     public String forgotPassword(String email) {
         // Find user by email
         Optional<User> userOpt = userRepository.findByEmail(email);
@@ -251,46 +251,73 @@ public class AuthService {
 
         User user = userOpt.get();
         
-        // Generate reset token
-        String resetToken = UUID.randomUUID().toString();
-        LocalDateTime expiryTime = LocalDateTime.now().plusHours(1); // 1 hour expiry
+        // Generate 6-digit OTP
+        String otp = String.format("%06d", new Random().nextInt(999999));
+        LocalDateTime expiryTime = LocalDateTime.now().plusMinutes(5); // 5 minutes expiry
         
-        // Save reset token to user
-        user.setResetToken(resetToken);
-        user.setResetTokenExpiry(expiryTime);
+        // Save OTP to user (reuse existing email OTP fields)
+        user.setEmailOtp(otp);
+        user.setOtpExpiry(expiryTime);
         userRepository.save(user);
         
-        // Send email with reset link
+        // Send OTP email using existing working service
         try {
-            emailService.sendPasswordResetEmail(email, resetToken, user.getName());
-            return "Password reset link sent to your email";
+            emailService.sendOtpEmail(email, otp);
+            return "Password reset OTP sent to your email";
         } catch (Exception e) {
-            // Remove the token if email fails
-            user.setResetToken(null);
-            user.setResetTokenExpiry(null);
+            // Remove the OTP if email fails
+            user.setEmailOtp(null);
+            user.setOtpExpiry(null);
             userRepository.save(user);
-            throw new AuthException("Failed to send reset email. Please try again.");
+            throw new AuthException("Failed to send reset OTP. Please try again.");
         }
     }
 
-    // ✅ Reset Password Method
-    public String resetPassword(String token, String newPassword) {
-        // Find user by reset token
-        Optional<User> userOpt = userRepository.findByResetToken(token);
+    // ✅ Verify OTP Method
+    public String verifyForgotPasswordOtp(String email, String otp) {
+        // Find user by email
+        Optional<User> userOpt = userRepository.findByEmail(email);
         if (userOpt.isEmpty()) {
-            throw new AuthException("Invalid or expired reset token");
+            throw new AuthException("No user found with this email address");
         }
 
         User user = userOpt.get();
         
-        // Check if token is expired
-        if (user.getResetTokenExpiry().isBefore(LocalDateTime.now())) {
-            // Clear expired token
-            user.setResetToken(null);
-            user.setResetTokenExpiry(null);
-            userRepository.save(user);
-            throw new AuthException("Reset token has expired. Please request a new one.");
+        // Check if OTP exists and not expired
+        if (user.getEmailOtp() == null || user.getOtpExpiry() == null) {
+            throw new AuthException("No OTP found. Please request a new one.");
         }
+        
+        if (user.getOtpExpiry().isBefore(LocalDateTime.now())) {
+            // Clear expired OTP
+            user.setEmailOtp(null);
+            user.setOtpExpiry(null);
+            userRepository.save(user);
+            throw new AuthException("OTP has expired. Please request a new one.");
+        }
+        
+        // Verify OTP
+        if (!otp.equals(user.getEmailOtp())) {
+            throw new AuthException("Invalid OTP. Please try again.");
+        }
+        
+        // OTP verified successfully - clear it
+        user.setEmailOtp(null);
+        user.setOtpExpiry(null);
+        userRepository.save(user);
+        
+        return "OTP verified successfully. You can now reset your password.";
+    }
+
+    // ✅ Reset Password Method - Modified for OTP flow
+    public String resetPasswordAfterOtp(String email, String newPassword) {
+        // Find user by email
+        Optional<User> userOpt = userRepository.findByEmail(email);
+        if (userOpt.isEmpty()) {
+            throw new AuthException("No user found with this email address");
+        }
+
+        User user = userOpt.get();
         
         // Validate new password
         if (newPassword == null || newPassword.length() < 8) {
@@ -311,10 +338,8 @@ public class AuthService {
             throw new AuthException("Password must contain at least one special character");
         }
         
-        // Update password and clear reset token
+        // Update password
         user.setPassword(passwordEncoder.encode(newPassword));
-        user.setResetToken(null);
-        user.setResetTokenExpiry(null);
         userRepository.save(user);
         
         return "Password reset successfully";

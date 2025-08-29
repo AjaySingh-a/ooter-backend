@@ -251,8 +251,13 @@ public class AuthService {
 
         User user = userOpt.get();
         
-        // Generate 6-digit OTP
-        String otp = String.format("%06d", new Random().nextInt(999999));
+        // Check if email is already verified (reuse existing logic)
+        if (!user.isEmailVerified()) {
+            throw new AuthException("Please verify your email first before requesting password reset");
+        }
+        
+        // Generate 6-digit OTP (same as profile page)
+        String otp = String.valueOf(new Random().nextInt(900000) + 100000);
         LocalDateTime expiryTime = LocalDateTime.now().plusMinutes(5); // 5 minutes expiry
         
         // Save OTP to user (reuse existing email OTP fields)
@@ -262,9 +267,12 @@ public class AuthService {
         
         // Send OTP email using existing working service
         try {
+            System.out.println("Sending OTP to: " + email + " | OTP: " + otp);
             emailService.sendOtpEmail(email, otp);
+            System.out.println("OTP email sent successfully");
             return "Password reset OTP sent to your email";
         } catch (Exception e) {
+            System.out.println("Failed to send OTP email: " + e.getMessage());
             // Remove the OTP if email fails
             user.setEmailOtp(null);
             user.setOtpExpiry(null);
@@ -296,10 +304,13 @@ public class AuthService {
             throw new AuthException("OTP has expired. Please request a new one.");
         }
         
-        // Verify OTP
+        // Verify OTP (exact same logic as profile page)
+        System.out.println("Verifying OTP: " + otp + " | Stored OTP: " + user.getEmailOtp());
         if (!otp.equals(user.getEmailOtp())) {
+            System.out.println("OTP verification failed - Invalid OTP");
             throw new AuthException("Invalid OTP. Please try again.");
         }
+        System.out.println("OTP verification successful");
         
         // OTP verified successfully - clear it
         user.setEmailOtp(null);

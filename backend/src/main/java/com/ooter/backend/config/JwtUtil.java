@@ -14,7 +14,7 @@ import java.util.Map;
 public class JwtUtil {
 
     // Configuration constants
-    private static final long EXPIRATION_TIME = 86400000; // 24 hours
+    private static final long EXPIRATION_TIME = 2592000000L; // 30 days (30 * 24 * 60 * 60 * 1000)
     private static final String SECRET_KEY = "ooterappsecretkeyooterappsecretkeyooterapp"; // 32+ chars for HS256
     
     private final Key signingKey = Keys.hmacShaKeyFor(SECRET_KEY.getBytes());

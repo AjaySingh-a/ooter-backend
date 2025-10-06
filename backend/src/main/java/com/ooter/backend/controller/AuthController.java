@@ -3,9 +3,12 @@ package com.ooter.backend.controller;
 import com.ooter.backend.dto.*;
 import com.ooter.backend.exception.AuthException;
 import com.ooter.backend.service.AuthService;
+import com.ooter.backend.config.JwtUtil;
+import com.ooter.backend.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -15,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final JwtUtil jwtUtil;
 
     @PostMapping("/signup")
     public ResponseEntity<?> signup(@RequestBody SignupRequest request) {
@@ -115,6 +119,27 @@ public class AuthController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ErrorResponse("Server error", "Failed to reset password"));
+        }
+    }
+
+    @PostMapping("/refresh-token")
+    public ResponseEntity<?> refreshToken(@AuthenticationPrincipal User user) {
+        try {
+            if (user == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse("Unauthorized", "User not authenticated"));
+            }
+            
+            String newToken = jwtUtil.generateToken(user);
+            return ResponseEntity.ok(LoginResponse.builder()
+                .token(newToken)
+                .role(user.getRole())
+                .userId(user.getId())
+                .name(user.getName())
+                .build());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse("Server error", "Failed to refresh token"));
         }
     }
 }

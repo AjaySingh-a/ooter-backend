@@ -7,7 +7,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
@@ -17,7 +16,6 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final CustomOAuth2SuccessHandler customOAuth2SuccessHandler;
-    private final ClientRegistrationRepository clientRegistrationRepository;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -29,6 +27,7 @@ public class SecurityConfig {
                     "/", 
                     "/api/auth/signup",
                     "/api/auth/login",
+                    "/api/auth/refresh-token",  // ✅ Allow token refresh
                     "/oauth2/**",              // ✅ Allow full oauth2 flow
                     "/login/",               // ✅ Allow internal login endpoints
                     "/error",                  // ✅ Prevent redirect to HTML error page

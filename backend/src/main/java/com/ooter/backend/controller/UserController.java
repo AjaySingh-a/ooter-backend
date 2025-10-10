@@ -4,7 +4,6 @@ import com.ooter.backend.config.JwtUtil;
 import com.ooter.backend.entity.User;
 import com.ooter.backend.repository.UserRepository;
 import com.ooter.backend.service.EmailService;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -133,6 +132,38 @@ public class UserController {
         user.setOtpExpiry(null);
         userRepository.save(user);
         return ResponseEntity.ok("Email verified");
+    }
+
+    @PostMapping("/upload-certificates")
+    public ResponseEntity<?> uploadCertificates(
+        @RequestBody Map<String, String> certificateUrls,
+        @AuthenticationPrincipal User user
+    ) {
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of("status", "error", "message", "Unauthorized"));
+        }
+
+        String gstUrl = certificateUrls.get("gstCertificateUrl");
+        String cinUrl = certificateUrls.get("cinCertificateUrl");
+        String allotmentUrl = certificateUrls.get("allotmentCertificateUrl");
+
+        if (gstUrl == null || gstUrl.trim().isEmpty()) {
+            return ResponseEntity.badRequest()
+                .body(Map.of("status", "error", "message", "GST certificate URL is required"));
+        }
+
+        user.setGstCertificateUrl(gstUrl);
+        user.setCinCertificateUrl(cinUrl);
+        user.setAllotmentCertificateUrl(allotmentUrl);
+        user.setCertificatesUploadedAt(LocalDateTime.now());
+        user.setVerified(true);
+        userRepository.save(user);
+
+        return ResponseEntity.ok(Map.of(
+            "status", "success",
+            "message", "Certificates uploaded successfully"
+        ));
     }
 
     @PutMapping("/update-profile")

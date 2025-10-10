@@ -53,6 +53,12 @@ public class User implements UserDetails {
     private String cin;
     private String address;
 
+    // Certificate URLs (stored from Cloudinary)
+    private String gstCertificateUrl;
+    private String cinCertificateUrl;
+    private String allotmentCertificateUrl;
+    private LocalDateTime certificatesUploadedAt;
+
     @Column(name = "google_id")
     private String googleId;
 

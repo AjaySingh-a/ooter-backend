@@ -41,25 +41,36 @@ public class HoardingController {
     @PostMapping
     @CacheEvict(value = {"vendorListingStats", "vendorDashboard", "vendorListings"}, allEntries = true)
     public ResponseEntity<?> createHoarding(@RequestBody Hoarding hoarding, @AuthenticationPrincipal User vendor) {
-        if (vendor == null || vendor.getRole() != Role.VENDOR) {
-            return ResponseEntity.status(403).body("Only vendors can create hoardings");
+        try {
+            if (vendor == null || vendor.getRole() != Role.VENDOR) {
+                return ResponseEntity.status(403).body("Only vendors can create hoardings");
+            }
+
+            hoarding.setOwner(vendor);
+
+            if (hoarding.getCategory() == null) {
+                hoarding.setCategory(HoardingCategory.RECOMMENDED);
+            }
+
+            if (hoarding.getStatus() == null) {
+                hoarding.setStatus(HoardingStatus.ACTIVE);
+            }
+
+            hoarding.setBooked(hoarding.getStatus() == HoardingStatus.BOOKED);
+            
+            // Ensure pinCode is properly set
+            if (hoarding.getPinCode() == null) {
+                hoarding.setPinCode("");
+            }
+
+            Hoarding saved = hoardingRepository.save(hoarding);
+            return ResponseEntity.ok(new HoardingResponse(saved));
+        } catch (Exception e) {
+            // Log the error for debugging
+            System.err.println("Error creating hoarding: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body("Internal Server Error: " + e.getMessage());
         }
-
-        hoarding.setOwner(vendor);
-
-        if (hoarding.getCategory() == null) {
-            hoarding.setCategory(HoardingCategory.RECOMMENDED);
-        }
-
-        if (hoarding.getStatus() == null) {
-            hoarding.setStatus(HoardingStatus.ACTIVE);
-        }
-
-        hoarding.setBooked(hoarding.getStatus() == HoardingStatus.BOOKED);
-        hoarding.setPinCode(hoarding.getPinCode());
-
-        Hoarding saved = hoardingRepository.save(hoarding);
-        return ResponseEntity.ok(new HoardingResponse(saved));
     }
 
     @GetMapping

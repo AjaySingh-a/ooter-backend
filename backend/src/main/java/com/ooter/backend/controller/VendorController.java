@@ -92,8 +92,15 @@ public class VendorController {
             @RequestBody VendorRegistrationRequest request) {
         if (user == null) return ResponseEntity.status(401).body(new MessageResponse("User not authenticated"));
 
+        // ✅ Better error handling - check if user ID is valid
+        if (user.getId() == null) {
+            return ResponseEntity.status(401).body(new MessageResponse("Invalid user session. Please login again."));
+        }
+
         Optional<User> optionalUser = userRepository.findById(user.getId());
-        if (optionalUser.isEmpty()) return ResponseEntity.badRequest().body(new MessageResponse("User not found"));
+        if (optionalUser.isEmpty()) {
+            return ResponseEntity.badRequest().body(new MessageResponse("User not found. Please login again."));
+        }
 
         User existingUser = optionalUser.get();
         if (existingUser.getRole() != Role.USER)

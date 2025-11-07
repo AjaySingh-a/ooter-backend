@@ -6,6 +6,8 @@ import com.ooter.backend.repository.BookingRepository;
 import com.ooter.backend.repository.HoardingRepository;
 import com.ooter.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.*;
@@ -35,6 +37,7 @@ public class VendorController {
     private final UserRepository userRepository;
     private final HoardingRepository hoardingRepository;
     private final BookingRepository bookingRepository;
+    private final CacheManager cacheManager;
     private static final DateTimeFormatter HTTP_HEADER_DATE_FORMAT = DateTimeFormatter.RFC_1123_DATE_TIME;
 
     private Instant parseHttpDate(String httpDate) {
@@ -117,6 +120,20 @@ public class VendorController {
         existingUser.setRole(Role.VENDOR);
 
         userRepository.save(existingUser);
+        
+        // ✅ CRITICAL: Evict users cache to prevent stale user data in JwtAuthFilter
+        // This ensures that after role change, the filter will fetch fresh user from database
+        Cache userCache = cacheManager.getCache("users");
+        if (userCache != null) {
+            // Evict by user identifier (phone or email) - this is how JwtAuthFilter caches users
+            String userIdentifier = existingUser.getPhone() != null 
+                ? existingUser.getPhone() 
+                : existingUser.getEmail();
+            if (userIdentifier != null) {
+                userCache.evict(userIdentifier);
+            }
+        }
+        
         return ResponseEntity.ok(new MessageResponse("Vendor registration successful"));
     }
 

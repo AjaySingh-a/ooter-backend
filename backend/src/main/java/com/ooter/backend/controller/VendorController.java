@@ -10,6 +10,7 @@ import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.*;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
@@ -109,6 +110,33 @@ public class VendorController {
         if (existingUser.getRole() != Role.USER)
             return ResponseEntity.status(403).body(new MessageResponse("Only regular users can become vendors"));
 
+        // ✅ Validate required fields
+        if (request.getCompanyName() == null || request.getCompanyName().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(new MessageResponse("Company name is required"));
+        }
+        if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(new MessageResponse("Email is required"));
+        }
+        if (request.getGstin() == null || request.getGstin().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(new MessageResponse("GSTIN is required"));
+        }
+
+        // ✅ Check if email already exists for another user (if changing email)
+        if (request.getEmail() != null && !request.getEmail().equals(existingUser.getEmail())) {
+            Optional<User> emailUser = userRepository.findByEmail(request.getEmail());
+            if (emailUser.isPresent() && !emailUser.get().getId().equals(existingUser.getId())) {
+                return ResponseEntity.badRequest().body(new MessageResponse("Email already exists. Please use a different email."));
+            }
+        }
+
+        // ✅ Check if mobile already exists for another user (if provided and different)
+        if (request.getMobile() != null && !request.getMobile().trim().isEmpty()) {
+            Optional<User> mobileUser = userRepository.findByPhone(request.getMobile());
+            if (mobileUser.isPresent() && !mobileUser.get().getId().equals(existingUser.getId())) {
+                return ResponseEntity.badRequest().body(new MessageResponse("Mobile number already exists. Please use a different mobile number."));
+            }
+        }
+
         existingUser.setCompanyName(request.getCompanyName());
         existingUser.setEmail(request.getEmail());
         existingUser.setDesignation(request.getDesignation());
@@ -119,10 +147,30 @@ public class VendorController {
         existingUser.setAddress(request.getAddress());
         existingUser.setRole(Role.VENDOR);
 
-        userRepository.save(existingUser);
+        try {
+            userRepository.save(existingUser);
+        } catch (DataIntegrityViolationException e) {
+            // ✅ Handle database constraint violations (email/mobile uniqueness)
+            String errorMessage = e.getMessage();
+            if (errorMessage != null) {
+                if (errorMessage.contains("email") || errorMessage.contains("EMAIL")) {
+                    return ResponseEntity.badRequest().body(new MessageResponse("Email already exists. Please use a different email."));
+                }
+                if (errorMessage.contains("phone") || errorMessage.contains("PHONE") || errorMessage.contains("mobile")) {
+                    return ResponseEntity.badRequest().body(new MessageResponse("Mobile number already exists. Please use a different mobile number."));
+                }
+                if (errorMessage.contains("gstin") || errorMessage.contains("GSTIN")) {
+                    return ResponseEntity.badRequest().body(new MessageResponse("GSTIN already exists. Please use a different GSTIN."));
+                }
+            }
+            return ResponseEntity.badRequest().body(new MessageResponse("Registration failed due to duplicate data. Please check your details."));
+        } catch (Exception e) {
+            // ✅ Handle any other exceptions
+            return ResponseEntity.status(500).body(new MessageResponse("Registration failed. Please try again later."));
+        }
         
-        // ✅ CRITICAL: Evict users cache to prevent stale user data in JwtAuthFilter
-        // This ensures that after role change, the filter will fetch fresh user from database
+        // ✅ CRITICAL: Evict all user-related caches to prevent stale data
+        // 1. Evict users cache (used by JwtAuthFilter)
         Cache userCache = cacheManager.getCache("users");
         if (userCache != null) {
             // Evict by user identifier (phone or email) - this is how JwtAuthFilter caches users
@@ -132,6 +180,12 @@ public class VendorController {
             if (userIdentifier != null) {
                 userCache.evict(userIdentifier);
             }
+        }
+        
+        // 2. Evict userProfile cache (used by /users/me endpoint)
+        Cache userProfileCache = cacheManager.getCache("userProfile");
+        if (userProfileCache != null && existingUser.getId() != null) {
+            userProfileCache.evict(existingUser.getId());
         }
         
         return ResponseEntity.ok(new MessageResponse("Vendor registration successful"));

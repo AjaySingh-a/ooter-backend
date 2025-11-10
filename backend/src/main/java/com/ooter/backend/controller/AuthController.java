@@ -23,8 +23,8 @@ public class AuthController {
     @PostMapping("/signup")
     public ResponseEntity<?> signup(@RequestBody SignupRequest request) {
         try {
-            String message = authService.signup(request);
-            return ResponseEntity.ok(new SuccessResponse(message));
+            LoginResponse response = authService.signup(request);
+            return ResponseEntity.ok(response);
         } catch (AuthException e) {
             return ResponseEntity.badRequest().body(new ErrorResponse("Signup failed", e.getMessage()));
         } catch (Exception e) {

@@ -31,7 +31,7 @@ public class AuthService {
     // In-memory storage for OTP
     private final ConcurrentHashMap<String, OtpData> otpStorage = new ConcurrentHashMap<>();
 
-    public String signup(SignupRequest request) {
+    public LoginResponse signup(SignupRequest request) {
         // Validate required fields
         if (request.getName() == null || request.getName().trim().isEmpty()) {
             throw new AuthException("Name is required");
@@ -101,7 +101,17 @@ public class AuthService {
         }
 
         userRepository.save(user);
-        return "Signup successful";
+        
+        // Generate JWT token for auto-login after signup
+        String token = jwtUtil.generateToken(user);
+        
+        // Return LoginResponse similar to login method
+        return LoginResponse.builder()
+                .token(token)
+                .role(user.getRole())
+                .userId(user.getId())
+                .name(user.getName())
+                .build();
     }
 
     public LoginResponse login(LoginRequest request) {

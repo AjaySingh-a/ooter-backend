@@ -34,7 +34,7 @@ public class AuthService {
     // In-memory storage for OTP
     private final ConcurrentHashMap<String, OtpData> otpStorage = new ConcurrentHashMap<>();
 
-    public String signup(SignupRequest request) {
+    public LoginResponse signup(SignupRequest request) {
         // Validate required fields
         if (request.getName() == null || request.getName().trim().isEmpty()) {
             throw new AuthException("Name is required");
@@ -108,7 +108,15 @@ public class AuthService {
         // ✅ CRITICAL: Evict cache for new user to prevent stale data
         evictUserCache(savedUser);
         
-        return "Signup successful";
+        // ✅ Generate token and return LoginResponse (auto-login after signup)
+        String token = jwtUtil.generateToken(savedUser);
+        
+        return LoginResponse.builder()
+                .token(token)
+                .role(savedUser.getRole())
+                .userId(savedUser.getId())
+                .name(savedUser.getName())
+                .build();
     }
 
     public LoginResponse login(LoginRequest request) {

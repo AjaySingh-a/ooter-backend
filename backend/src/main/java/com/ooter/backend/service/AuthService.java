@@ -8,6 +8,8 @@ import com.ooter.backend.repository.UserRepository;
 import com.ooter.backend.util.GoogleTokenVerifier;
 import com.ooter.backend.exception.AuthException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -27,11 +29,12 @@ public class AuthService {
     private final GoogleTokenVerifier googleTokenVerifier;
     private final Fast2SMS fast2SmsService; // ✅ Fast2SMS service inject karo
     private final EmailService emailService; // ✅ Email service for password reset
+    private final CacheManager cacheManager; // ✅ Cache manager for cache eviction
     
     // In-memory storage for OTP
     private final ConcurrentHashMap<String, OtpData> otpStorage = new ConcurrentHashMap<>();
 
-    public LoginResponse signup(SignupRequest request) {
+    public String signup(SignupRequest request) {
         // Validate required fields
         if (request.getName() == null || request.getName().trim().isEmpty()) {
             throw new AuthException("Name is required");
@@ -100,18 +103,12 @@ public class AuthService {
             }
         }
 
-        userRepository.save(user);
+        User savedUser = userRepository.save(user);
         
-        // Generate JWT token for auto-login after signup
-        String token = jwtUtil.generateToken(user);
+        // ✅ CRITICAL: Evict cache for new user to prevent stale data
+        evictUserCache(savedUser);
         
-        // Return LoginResponse similar to login method
-        return LoginResponse.builder()
-                .token(token)
-                .role(user.getRole())
-                .userId(user.getId())
-                .name(user.getName())
-                .build();
+        return "Signup successful";
     }
 
     public LoginResponse login(LoginRequest request) {
@@ -122,6 +119,10 @@ public class AuthService {
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new RuntimeException("Invalid password");
         }
+
+        // ✅ CRITICAL: Evict cache on login to ensure fresh data
+        // This prevents stale data when user is deleted and recreated with same email/phone
+        evictUserCache(user);
 
         // ✅ Use new token generation method that includes userId
         String token = jwtUtil.generateToken(user);
@@ -140,6 +141,9 @@ public class AuthService {
             
             User user = userRepository.findByEmailOrGoogleId(googleUser.email, googleUser.googleId)
                 .orElseGet(() -> createGoogleUser(googleUser));
+            
+            // ✅ CRITICAL: Evict cache on Google login to ensure fresh data
+            evictUserCache(user);
             
             String token = jwtUtil.generateToken(user);
             
@@ -226,6 +230,33 @@ public class AuthService {
 
     private String generateReferralCode() {
         return UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    }
+
+    /**
+     * Evict all user-related caches to prevent stale data
+     * This is critical when user is deleted and recreated with same email/phone
+     */
+    private void evictUserCache(User user) {
+        if (user == null) return;
+        
+        // 1. Evict users cache (used by JwtAuthFilter) - by phone/email
+        Cache userCache = cacheManager.getCache("users");
+        if (userCache != null) {
+            // Evict by phone if exists
+            if (user.getPhone() != null && !user.getPhone().trim().isEmpty()) {
+                userCache.evict(user.getPhone());
+            }
+            // Evict by email if exists
+            if (user.getEmail() != null && !user.getEmail().trim().isEmpty()) {
+                userCache.evict(user.getEmail());
+            }
+        }
+        
+        // 2. Evict userProfile cache (used by /users/me endpoint) - by userId
+        Cache userProfileCache = cacheManager.getCache("userProfile");
+        if (userProfileCache != null && user.getId() != null) {
+            userProfileCache.evict(user.getId());
+        }
     }
 
     private LoginResponse buildLoginResponse(User user, String token) {

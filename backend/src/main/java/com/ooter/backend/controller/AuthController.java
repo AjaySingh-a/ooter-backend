@@ -81,11 +81,11 @@ public class AuthController {
         }
     }
 
-    // ✅ FORGOT PASSWORD ENDPOINTS
+    // ✅ FORGOT PASSWORD ENDPOINTS - Phone Based with DLT SMS
     @PostMapping("/forgot-password")
     public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequest request) {
         try {
-            String message = authService.forgotPassword(request.getEmail());
+            String message = authService.forgotPassword(request.getPhone());
             return ResponseEntity.ok(new SuccessResponse(message));
         } catch (AuthException e) {
             return ResponseEntity.badRequest().body(new ErrorResponse("Password reset failed", e.getMessage()));
@@ -95,11 +95,11 @@ public class AuthController {
         }
     }
 
-    // ✅ OTP-BASED FORGOT PASSWORD ENDPOINTS
+    // ✅ OTP-BASED FORGOT PASSWORD ENDPOINTS - Phone Based
     @PostMapping("/verify-forgot-password-otp")
     public ResponseEntity<?> verifyForgotPasswordOtp(@RequestBody VerifyForgotPasswordOtpRequest request) {
         try {
-            String message = authService.verifyForgotPasswordOtp(request.getEmail(), request.getOtp());
+            String message = authService.verifyForgotPasswordOtp(request.getPhone(), request.getOtp());
             return ResponseEntity.ok(new SuccessResponse(message));
         } catch (AuthException e) {
             return ResponseEntity.badRequest().body(new ErrorResponse("OTP verification failed", e.getMessage()));
@@ -112,7 +112,7 @@ public class AuthController {
     @PostMapping("/reset-password-after-otp")
     public ResponseEntity<?> resetPasswordAfterOtp(@RequestBody ResetPasswordAfterOtpRequest request) {
         try {
-            String message = authService.resetPasswordAfterOtp(request.getEmail(), request.getNewPassword());
+            String message = authService.resetPasswordAfterOtp(request.getPhone(), request.getNewPassword());
             return ResponseEntity.ok(new SuccessResponse(message));
         } catch (AuthException e) {
             return ResponseEntity.badRequest().body(new ErrorResponse("Password reset failed", e.getMessage()));

@@ -8,6 +8,7 @@ import com.ooter.backend.repository.UserRepository;
 import com.ooter.backend.util.GoogleTokenVerifier;
 import com.ooter.backend.exception.AuthException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -18,6 +19,7 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -290,37 +292,44 @@ public class AuthService {
 
     // ✅ Forgot Password Method - Phone Based with DLT SMS
     public String forgotPassword(String phone) {
+        log.info("=== FORGOT PASSWORD REQUEST ===");
+        log.info("Phone number received: {}", phone);
+        
         // Validate phone format
         if (phone == null || phone.length() != 10 || !phone.matches("\\d+")) {
+            log.error("Invalid phone number format: {}", phone);
             throw new AuthException("Invalid phone number format");
         }
         
         // Find user by phone (verify user exists)
-        if (userRepository.findByPhone(phone).isEmpty()) {
+        Optional<User> userOpt = userRepository.findByPhone(phone);
+        if (userOpt.isEmpty()) {
+            log.error("User not found for phone: {}", phone);
             throw new AuthException("No user found with this phone number");
         }
         
+        log.info("User found for phone: {}", phone);
+        
         // Generate 6-digit OTP
         String otp = String.format("%06d", new Random().nextInt(999999));
-        
-        // Log OTP for debugging
-        System.out.println("Forgot Password OTP for " + phone + ": " + otp);
+        log.info("Generated OTP for phone {}: {}", phone, otp);
         
         // ✅ Send OTP via SMS using DLT template FIRST (before storing)
         // Only store OTP if SMS is sent successfully
         try {
+            log.info("Attempting to send SMS to phone: {}", phone);
             fast2SmsService.sendOtpSms(phone, otp);
-            System.out.println("Password reset OTP SMS sent successfully");
+            log.info("Password reset OTP SMS sent successfully to phone: {}", phone);
             
             // Store OTP only after SMS is sent successfully
             long expiryTime = System.currentTimeMillis() + 5 * 60 * 1000;
             otpStorage.put("forgot_" + phone, new OtpData(otp, expiryTime));
-            System.out.println("OTP stored in memory for phone: " + phone);
+            log.info("OTP stored in memory for phone: {} (expires in 5 minutes)", phone);
             
             return "Password reset OTP sent to your phone number";
         } catch (Exception e) {
-            System.out.println("Failed to send OTP SMS: " + e.getMessage());
-            e.printStackTrace(); // Full stack trace for debugging
+            log.error("Failed to send OTP SMS to phone: {}", phone, e);
+            log.error("Error details: {}", e.getMessage());
             // Don't store OTP if SMS fails
             throw new AuthException("Failed to send reset OTP. Please check your phone number and try again. Error: " + e.getMessage());
         }
@@ -328,19 +337,25 @@ public class AuthService {
 
     // ✅ Verify Forgot Password OTP Method - Phone Based
     public String verifyForgotPasswordOtp(String phone, String otp) {
+        log.info("=== OTP VERIFICATION REQUEST ===");
+        log.info("Phone: {}, OTP: {}", phone, otp);
+        
         // Validate phone format
         if (phone == null || phone.length() != 10 || !phone.matches("\\d+")) {
+            log.error("Invalid phone number format: {}", phone);
             throw new AuthException("Invalid phone number format");
         }
         
         // Validate OTP format
         if (otp == null || otp.trim().isEmpty() || !otp.matches("\\d{6}")) {
+            log.error("Invalid OTP format: {}", otp);
             throw new AuthException("OTP must be exactly 6 digits");
         }
         
         // Find user by phone
         Optional<User> userOpt = userRepository.findByPhone(phone);
         if (userOpt.isEmpty()) {
+            log.error("User not found for phone: {}", phone);
             throw new AuthException("No user found with this phone number");
         }
 
@@ -348,17 +363,16 @@ public class AuthService {
         String storageKey = "forgot_" + phone;
         OtpData otpData = otpStorage.get(storageKey);
         
-        System.out.println("OTP Verification Request - Phone: " + phone + ", OTP: " + otp);
-        System.out.println("OTP Storage Key: " + storageKey);
-        System.out.println("OTP Data in Storage: " + (otpData != null ? "Found" : "NOT FOUND"));
+        log.info("OTP Storage Key: {}", storageKey);
+        log.info("OTP Data in Storage: {}", otpData != null ? "Found" : "NOT FOUND");
         
         if (otpData == null) {
-            System.out.println("ERROR: No OTP found in storage for phone: " + phone);
+            log.error("No OTP found in storage for phone: {}", phone);
             throw new AuthException("No OTP found. Please request a new OTP first.");
         }
         
         if (System.currentTimeMillis() > otpData.getExpiryTime()) {
-            System.out.println("ERROR: OTP expired for phone: " + phone);
+            log.error("OTP expired for phone: {}", phone);
             otpStorage.remove(storageKey);
             throw new AuthException("OTP has expired. Please request a new one.");
         }
@@ -367,15 +381,15 @@ public class AuthService {
         String storedOtp = otpData.getOtp();
         String inputOtp = otp.trim();
         
-        System.out.println("Comparing OTP - Input: '" + inputOtp + "' | Stored: '" + storedOtp + "'");
-        System.out.println("OTP Match: " + storedOtp.equals(inputOtp));
+        log.info("Comparing OTP - Input: '{}' | Stored: '{}'", inputOtp, storedOtp);
+        log.info("OTP Match: {}", storedOtp.equals(inputOtp));
         
         if (!storedOtp.equals(inputOtp)) {
-            System.out.println("ERROR: OTP verification failed - Input OTP does not match stored OTP");
+            log.error("OTP verification failed - Input OTP '{}' does not match stored OTP '{}'", inputOtp, storedOtp);
             throw new AuthException("Invalid OTP. Please enter the correct OTP sent to your phone.");
         }
         
-        System.out.println("SUCCESS: OTP verification successful for phone: " + phone);
+        log.info("SUCCESS: OTP verification successful for phone: {}", phone);
         
         // OTP verified successfully - remove it
         otpStorage.remove(storageKey);

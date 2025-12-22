@@ -6,11 +6,13 @@ import com.ooter.backend.service.AuthService;
 import com.ooter.backend.config.JwtUtil;
 import com.ooter.backend.entity.User;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -84,12 +86,18 @@ public class AuthController {
     // ✅ FORGOT PASSWORD ENDPOINTS - Phone Based with DLT SMS
     @PostMapping("/forgot-password")
     public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequest request) {
+        log.info("=== FORGOT PASSWORD API CALL ===");
+        log.info("Request received - Phone: {}", request.getPhone());
+        
         try {
             String message = authService.forgotPassword(request.getPhone());
+            log.info("Forgot password successful for phone: {}", request.getPhone());
             return ResponseEntity.ok(new SuccessResponse(message));
         } catch (AuthException e) {
+            log.error("AuthException in forgot password for phone {}: {}", request.getPhone(), e.getMessage());
             return ResponseEntity.badRequest().body(new ErrorResponse("Password reset failed", e.getMessage()));
         } catch (Exception e) {
+            log.error("Exception in forgot password for phone {}: {}", request.getPhone(), e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ErrorResponse("Server error", "Failed to process password reset request"));
         }
@@ -98,12 +106,18 @@ public class AuthController {
     // ✅ OTP-BASED FORGOT PASSWORD ENDPOINTS - Phone Based
     @PostMapping("/verify-forgot-password-otp")
     public ResponseEntity<?> verifyForgotPasswordOtp(@RequestBody VerifyForgotPasswordOtpRequest request) {
+        log.info("=== VERIFY FORGOT PASSWORD OTP API CALL ===");
+        log.info("Request received - Phone: {}, OTP: {}", request.getPhone(), request.getOtp());
+        
         try {
             String message = authService.verifyForgotPasswordOtp(request.getPhone(), request.getOtp());
+            log.info("OTP verification successful for phone: {}", request.getPhone());
             return ResponseEntity.ok(new SuccessResponse(message));
         } catch (AuthException e) {
+            log.error("AuthException in OTP verification for phone {}: {}", request.getPhone(), e.getMessage());
             return ResponseEntity.badRequest().body(new ErrorResponse("OTP verification failed", e.getMessage()));
         } catch (Exception e) {
+            log.error("Exception in OTP verification for phone {}: {}", request.getPhone(), e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ErrorResponse("Server error", "Failed to verify OTP"));
         }

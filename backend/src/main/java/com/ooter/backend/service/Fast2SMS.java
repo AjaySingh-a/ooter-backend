@@ -1,5 +1,6 @@
 package com.ooter.backend.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import java.net.URI;
@@ -9,6 +10,7 @@ import java.net.http.HttpResponse;
 import java.net.URLEncoder;
 import org.json.JSONObject;
 
+@Slf4j
 @Component
 public class Fast2SMS {
     
@@ -46,12 +48,12 @@ public class Fast2SMS {
         jsonPayload.put("numbers", formattedPhone);
         jsonPayload.put("template_id", dltTemplateId);
         
-        System.out.println("=== Fast2SMS DLT SMS Request ===");
-        System.out.println("Phone: " + formattedPhone);
-        System.out.println("Template ID: " + dltTemplateId);
-        System.out.println("Message: " + message);
-        System.out.println("API Key: " + (apiKey != null ? apiKey.substring(0, 10) + "..." : "NULL"));
-        System.out.println("JSON Payload: " + jsonPayload.toString());
+        log.info("=== Fast2SMS DLT SMS Request ===");
+        log.info("Phone: {}", formattedPhone);
+        log.info("Template ID: {}", dltTemplateId);
+        log.info("Message: {}", message);
+        log.info("API Key: {}", apiKey != null ? apiKey.substring(0, 10) + "..." : "NULL");
+        log.info("JSON Payload: {}", jsonPayload.toString());
         
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -64,14 +66,14 @@ public class Fast2SMS {
         HttpResponse<String> response = client.send(request, 
             HttpResponse.BodyHandlers.ofString());
         
-        System.out.println("=== Fast2SMS Response ===");
-        System.out.println("Status Code: " + response.statusCode());
-        System.out.println("Response Body: " + response.body());
+        log.info("=== Fast2SMS Response ===");
+        log.info("Status Code: {}", response.statusCode());
+        log.info("Response Body: {}", response.body());
         
         // Check if response indicates success
         if (response.statusCode() != 200) {
             String errorMsg = "SMS sending failed with HTTP status " + response.statusCode() + ": " + response.body();
-            System.out.println("ERROR: " + errorMsg);
+            log.error("ERROR: {}", errorMsg);
             throw new RuntimeException(errorMsg);
         }
         
@@ -79,14 +81,14 @@ public class Fast2SMS {
         try {
             JSONObject jsonResponse = new JSONObject(response.body());
             boolean success = jsonResponse.optBoolean("return", false);
-            System.out.println("SMS API Return Status: " + success);
+            log.info("SMS API Return Status: {}", success);
             
             if (!success) {
                 String errorMsg = jsonResponse.optString("message", "Unknown error");
                 String requestId = jsonResponse.optString("request_id", "");
-                System.out.println("ERROR: SMS API returned false");
-                System.out.println("Error Message: " + errorMsg);
-                System.out.println("Request ID: " + requestId);
+                log.error("ERROR: SMS API returned false");
+                log.error("Error Message: {}", errorMsg);
+                log.error("Request ID: {}", requestId);
                 
                 // Check for specific error codes
                 if (errorMsg.contains("template") || errorMsg.contains("Template")) {
@@ -100,13 +102,12 @@ public class Fast2SMS {
                 }
             }
             
-            System.out.println("SUCCESS: SMS sent successfully to " + formattedPhone);
+            log.info("SUCCESS: SMS sent successfully to {}", formattedPhone);
         } catch (RuntimeException e) {
             // Re-throw our custom exceptions
             throw e;
         } catch (Exception e) {
-            System.out.println("ERROR: Failed to parse SMS response: " + e.getMessage());
-            e.printStackTrace();
+            log.error("ERROR: Failed to parse SMS response: {}", e.getMessage(), e);
             throw new RuntimeException("SMS sending failed: Invalid response format - " + response.body());
         }
     }

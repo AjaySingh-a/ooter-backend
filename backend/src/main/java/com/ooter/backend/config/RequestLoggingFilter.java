@@ -26,16 +26,20 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
         String method = request.getMethod();
         
-        // Log all requests, especially auth endpoints
+        // Log ALL requests to see what's coming in
+        log.info("=== ALL INCOMING REQUEST ===");
+        log.info("Method: {}", method);
+        log.info("Path: {}", path);
+        log.info("Query String: {}", request.getQueryString());
+        log.info("Content Type: {}", request.getContentType());
+        log.info("Content Length: {}", request.getContentLength());
+        log.info("Remote Address: {}", request.getRemoteAddr());
+        log.info("Headers - Authorization: {}", request.getHeader("Authorization") != null ? "Present" : "Not Present");
+        
+        // Extra logging for auth endpoints
         if (path.contains("/auth/")) {
-            log.info("=== INCOMING REQUEST ===");
-            log.info("Method: {}", method);
-            log.info("Path: {}", path);
-            log.info("Query String: {}", request.getQueryString());
-            log.info("Content Type: {}", request.getContentType());
-            log.info("Content Length: {}", request.getContentLength());
-            log.info("Remote Address: {}", request.getRemoteAddr());
-            log.info("Headers - Authorization: {}", request.getHeader("Authorization") != null ? "Present" : "Not Present");
+            log.info("=== AUTH ENDPOINT REQUEST ===");
+            log.info("Full URL: {} {}", method, path);
         }
         
         filterChain.doFilter(request, response);

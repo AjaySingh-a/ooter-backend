@@ -87,7 +87,18 @@ public class AuthController {
     @PostMapping("/forgot-password")
     public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequest request) {
         log.info("=== FORGOT PASSWORD API CALL ===");
-        log.info("Request received - Phone: {}", request.getPhone());
+        log.info("Request received - Phone: {}", request != null ? request.getPhone() : "NULL REQUEST");
+        log.info("Request object: {}", request);
+        
+        if (request == null) {
+            log.error("ERROR: Request body is NULL");
+            return ResponseEntity.badRequest().body(new ErrorResponse("Invalid request", "Request body is required"));
+        }
+        
+        if (request.getPhone() == null || request.getPhone().isEmpty()) {
+            log.error("ERROR: Phone number is NULL or empty");
+            return ResponseEntity.badRequest().body(new ErrorResponse("Invalid request", "Phone number is required"));
+        }
         
         try {
             String message = authService.forgotPassword(request.getPhone());

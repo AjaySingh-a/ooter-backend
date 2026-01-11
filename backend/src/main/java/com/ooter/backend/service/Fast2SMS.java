@@ -23,6 +23,9 @@ public class Fast2SMS {
     @Value("${dlt.header.name}")
     private String dltHeaderName;
     
+    @Value("${dlt.entity.id}")
+    private String dltEntityId;
+    
     // ✅ Method for sending OTP SMS with DLT template
     public void sendOtpSms(String phone, String otp) throws Exception {
         // Format phone number (remove +91 if present)
@@ -45,17 +48,20 @@ public class Fast2SMS {
         // ✅ Fast2SMS DLT Template Format
         // Note: For DLT SMS API, use route="dlt" (not "otp")
         // When using template_id, route must be "dlt" to use DLT SMS API
+        // Entity ID is required for DLT SMS API
         JSONObject jsonPayload = new JSONObject();
         jsonPayload.put("route", "dlt");  // ✅ Changed from "otp" to "dlt" for DLT SMS API
         jsonPayload.put("sender_id", dltHeaderName);  // ✅ DLT Header Name (Sender ID)
         jsonPayload.put("message", message);
         jsonPayload.put("language", "english");
         jsonPayload.put("numbers", formattedPhone);
-        jsonPayload.put("template_id", dltTemplateId);
+        jsonPayload.put("template_id", dltTemplateId);  // ✅ DLT Template ID
+        jsonPayload.put("entity_id", dltEntityId);  // ✅ DLT Entity ID (Required for DLT SMS API)
         
         log.info("=== Fast2SMS DLT SMS Request ===");
         log.info("Phone: {}", formattedPhone);
         log.info("Template ID: {}", dltTemplateId);
+        log.info("Entity ID: {}", dltEntityId);
         log.info("Sender ID (Header Name): {}", dltHeaderName);
         log.info("Message: {}", message);
         log.info("API Key: {}", apiKey != null ? apiKey.substring(0, 10) + "..." : "NULL");

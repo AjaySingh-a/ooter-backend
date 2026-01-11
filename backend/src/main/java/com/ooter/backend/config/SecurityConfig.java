@@ -28,6 +28,9 @@ public class SecurityConfig {
                     "/api/auth/signup",
                     "/api/auth/login",
                     "/api/auth/refresh-token",  // ✅ Allow token refresh
+                    "/api/auth/forgot-password",  // ✅ Allow forgot password (public)
+                    "/api/auth/verify-forgot-password-otp",  // ✅ Allow OTP verification (public)
+                    "/api/auth/reset-password-after-otp",  // ✅ Allow password reset (public)
                     "/oauth2/**",              // ✅ Allow full oauth2 flow
                     "/login/",               // ✅ Allow internal login endpoints
                     "/error",                  // ✅ Prevent redirect to HTML error page

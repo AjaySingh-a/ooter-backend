@@ -49,23 +49,24 @@ public class Fast2SMS {
         
         // ✅ Fast2SMS DLT Template Format
         // For DLT SMS API, use route="dlt" and include full template message with OTP replaced
-        // When DLT Manager is configured, Fast2SMS automatically uses DLT details based on sender_id
-        // We don't need to send template_id and entity_id in payload if DLT Manager is already set up
+        // Fast2SMS DLT API REQUIRES template_id and entity_id in payload even if DLT Manager is configured
+        // This matches the format used in Fast2SMS dashboard when sending DLT SMS manually
         JSONObject jsonPayload = new JSONObject();
         jsonPayload.put("route", "dlt");  // ✅ CRITICAL: Must be "dlt" for DLT SMS API (NOT "otp")
-        jsonPayload.put("sender_id", dltHeaderName);  // ✅ DLT Header Name (Sender ID) - Fast2SMS uses this to fetch DLT details
-        jsonPayload.put("message", message);  // ✅ FULL template message with OTP replaced
+        jsonPayload.put("sender_id", dltHeaderName);  // ✅ DLT Header Name (Sender ID)
+        jsonPayload.put("message", message);  // ✅ FULL template message with OTP replaced (matches dashboard format)
         jsonPayload.put("language", "english");
         jsonPayload.put("numbers", formattedPhone);
-        // Note: template_id and entity_id are NOT needed in payload when DLT Manager is configured
-        // Fast2SMS automatically uses DLT details from DLT Manager based on sender_id
+        jsonPayload.put("template_id", dltTemplateId);  // ✅ DLT Template ID (REQUIRED - must match DLT Manager)
+        jsonPayload.put("entity_id", dltEntityId);  // ✅ DLT Entity ID (REQUIRED - must match DLT Manager)
         
         log.info("=== Fast2SMS DLT SMS Request ===");
         log.info("Phone: {}", formattedPhone);
+        log.info("Template ID: {}", dltTemplateId);
+        log.info("Entity ID: {}", dltEntityId);
         log.info("Sender ID (Header Name): {}", dltHeaderName);
         log.info("OTP: {}", otp);
         log.info("Full Message: {}", message);
-        log.info("Note: Using DLT Manager configuration (template_id and entity_id not in payload)");
         log.info("API Key: {}", apiKey != null ? apiKey.substring(0, 10) + "..." : "NULL");
         log.info("JSON Payload: {}", jsonPayload.toString());
         

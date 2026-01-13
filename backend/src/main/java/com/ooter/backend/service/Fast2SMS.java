@@ -36,28 +36,24 @@ public class Fast2SMS {
             throw new RuntimeException("Invalid phone number format");
         }
         
-        // ✅ DLT Template Content (must match exactly with DLT approved template)
-        // Template: "ADBOOK COMMUNICATION PRIVATE LIMITED: Your OOTER verification code is {#var#}. This code is valid for 5 minutes. Do not share it with anyone."
-        // For Fast2SMS DLT API, message field must contain the FULL template message with {#var#} replaced by actual OTP value
-        // This matches the format used in Fast2SMS dashboard when sending DLT SMS manually
-        String message = String.format(
-            "ADBOOK COMMUNICATION PRIVATE LIMITED: Your OOTER verification code is %s. This code is valid for 5 minutes. Do not share it with anyone.",
-            otp
-        );
+        // ✅ DLT Template Format for Fast2SMS API
+        // When using template_id, Fast2SMS automatically fetches the template from DLT Manager
+        // The message field should contain ONLY the variable value (OTP), NOT the full template
+        // Fast2SMS will replace {#var#} in the template with this OTP value
+        // Template in DLT Manager: "ADBOOK COMMUNICATION PRIVATE LIMITED: Your OOTER verification code is {#var#}. This code is valid for 5 minutes. Do not share it with anyone."
         
         String url = "https://www.fast2sms.com/dev/bulkV2";
         
-        // ✅ Fast2SMS DLT Template Format
-        // For DLT SMS API, use route="dlt" and include full template message with OTP replaced
-        // Fast2SMS DLT API REQUIRES template_id and entity_id in payload even if DLT Manager is configured
-        // This matches the format used in Fast2SMS dashboard when sending DLT SMS manually
+        // ✅ Fast2SMS DLT API Format
+        // When template_id is provided, message field should contain ONLY the variable value (OTP)
+        // Fast2SMS fetches the template and replaces {#var#} with the OTP value
         JSONObject jsonPayload = new JSONObject();
         jsonPayload.put("route", "dlt");  // ✅ CRITICAL: Must be "dlt" for DLT SMS API (NOT "otp")
         jsonPayload.put("sender_id", dltHeaderName);  // ✅ DLT Header Name (Sender ID)
-        jsonPayload.put("message", message);  // ✅ FULL template message with OTP replaced (matches dashboard format)
+        jsonPayload.put("message", otp);  // ✅ ONLY OTP value - Fast2SMS will replace {#var#} in template
         jsonPayload.put("language", "english");
         jsonPayload.put("numbers", formattedPhone);
-        jsonPayload.put("template_id", dltTemplateId);  // ✅ DLT Template ID (REQUIRED - must match DLT Manager)
+        jsonPayload.put("template_id", dltTemplateId);  // ✅ DLT Template ID (REQUIRED - Fast2SMS fetches template from this)
         jsonPayload.put("entity_id", dltEntityId);  // ✅ DLT Entity ID (REQUIRED - must match DLT Manager)
         
         log.info("=== Fast2SMS DLT SMS Request ===");
@@ -65,8 +61,8 @@ public class Fast2SMS {
         log.info("Template ID: {}", dltTemplateId);
         log.info("Entity ID: {}", dltEntityId);
         log.info("Sender ID (Header Name): {}", dltHeaderName);
-        log.info("OTP: {}", otp);
-        log.info("Full Message: {}", message);
+        log.info("OTP (Variable Value): {}", otp);
+        log.info("Note: Message field contains only OTP value. Fast2SMS will fetch template and replace {#var#}");
         log.info("API Key: {}", apiKey != null ? apiKey.substring(0, 10) + "..." : "NULL");
         log.info("JSON Payload: {}", jsonPayload.toString());
         

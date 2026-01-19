@@ -24,6 +24,11 @@ public class RazorpayService {
     private final RazorpayClient razorpayClient;
     private final RazorpayConfig razorpayConfig;
 
+    /** Public (publishable) key id for frontend checkout */
+    public String getKeyId() {
+        return razorpayConfig.getKeyId();
+    }
+
     public String createOrder(int amount, String currency, String receipt, Map<String, String> notes) 
             throws PaymentException {
         try {
@@ -37,10 +42,6 @@ public class RazorpayService {
             
             if (notes != null && !notes.isEmpty()) {
                 orderRequest.put("notes", new JSONObject(notes));
-            }
-
-            if (isTestMode()) {
-                configureTestMode(orderRequest);
             }
 
             log.debug("Creating Razorpay order with request: {}", orderRequest);
@@ -95,13 +96,5 @@ public class RazorpayService {
 
     private boolean isTestMode() {
         return razorpayConfig.getKeyId().startsWith("rzp_test_");
-    }
-
-    private void configureTestMode(JSONObject orderRequest) {
-        orderRequest.put("method", "card");
-        orderRequest.put("notes", new JSONObject()
-            .put("test_mode", true)
-            .put("environment", "sandbox"));
-        log.info("Test mode configuration applied");
     }
 }

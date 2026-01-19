@@ -66,7 +66,8 @@ public class PaymentController {
             return ResponseEntity.ok(new CreateOrderResponse(
                     orderId,
                     amountInPaise,
-                    "INR"
+                    "INR",
+                    razorpayService.getKeyId()
             ));
 
         } catch (IllegalArgumentException e) {
@@ -199,6 +200,7 @@ public class PaymentController {
         private final String orderId;
         private final int amount;
         private final String currency;
+        private final String keyId;
     }
 
     @Data

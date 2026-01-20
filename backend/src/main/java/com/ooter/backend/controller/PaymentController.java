@@ -133,11 +133,23 @@ public class PaymentController {
     }
 
     private double calculateTotalAmount(CreateOrderRequest request) {
-        return request.getTotalPrice() + 
-               request.getPrintingCharges() + 
-               request.getMountingCharges() + 
-               request.getGst() - 
-               request.getDiscount();
+        // Calculate subtotal (base price + printing + mounting)
+        double subtotal = request.getTotalPrice() + 
+                         request.getPrintingCharges() + 
+                         request.getMountingCharges();
+        
+        // Add 15% commission (Ooter platform commission)
+        double commission = subtotal * 0.15;
+        double grossTotal = subtotal + commission;
+        
+        // Apply discount
+        double afterDiscount = grossTotal - request.getDiscount();
+        
+        // Calculate GST (18%) on amount after discount
+        double gst = afterDiscount * 0.18;
+        
+        // Final total
+        return afterDiscount + gst;
     }
 
     private void validateBookingRequest(BookingOrderRequest request) {
@@ -150,6 +162,15 @@ public class PaymentController {
     }
 
     private BookingOrderRequest convertToBookingRequest(PaymentVerificationRequest request) {
+        // Recalculate GST to ensure consistency with create-order calculation
+        double subtotal = request.getTotalPrice() + 
+                         request.getPrintingCharges() + 
+                         request.getMountingCharges();
+        double commission = subtotal * 0.15;
+        double grossTotal = subtotal + commission;
+        double afterDiscount = grossTotal - request.getDiscount();
+        double gst = afterDiscount * 0.18;
+        
         BookingOrderRequest bookingRequest = new BookingOrderRequest();
         bookingRequest.setHoardingId(request.getHoardingId());
         bookingRequest.setStartDate(request.getStartDate());
@@ -158,7 +179,7 @@ public class PaymentController {
         bookingRequest.setPrintingCharges((double) request.getPrintingCharges());
         bookingRequest.setMountingCharges((double) request.getMountingCharges());
         bookingRequest.setDiscount((double) request.getDiscount());
-        bookingRequest.setGst((double) request.getGst());
+        bookingRequest.setGst(gst); // Use recalculated GST
         return bookingRequest;
     }
 

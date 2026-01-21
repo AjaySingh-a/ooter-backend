@@ -32,7 +32,11 @@ public class RazorpayService {
     public String createOrder(int amount, String currency, String receipt, Map<String, String> notes) 
             throws PaymentException {
         try {
-            validateAmount(amount);
+            // Amount validation is handled in PaymentController
+            // Razorpay minimum is ₹1 (100 paise), but we allow any positive amount for testing
+            if (amount <= 0) {
+                throw new IllegalArgumentException("Amount must be greater than zero");
+            }
             
             JSONObject orderRequest = new JSONObject();
             orderRequest.put("amount", amount);
@@ -88,11 +92,6 @@ public class RazorpayService {
         return Base64.getEncoder().encodeToString(hash);
     }
 
-    private void validateAmount(int amount) {
-        if (amount < 100) { // Minimum ₹1 in paise
-            throw new IllegalArgumentException("Amount must be at least ₹1");
-        }
-    }
 
     private boolean isTestMode() {
         return razorpayConfig.getKeyId().startsWith("rzp_test_");

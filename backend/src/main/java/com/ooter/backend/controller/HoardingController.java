@@ -5,6 +5,10 @@ import com.ooter.backend.repository.HoardingRepository;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -77,6 +81,9 @@ public class HoardingController {
     public ResponseEntity<List<HoardingResponse>> getAllHoardings(
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String city,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) String sort,
             @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
         
         Instant lastUpdate = hoardingRepository.findMaxUpdatedAt()
@@ -91,7 +98,19 @@ public class HoardingController {
 
         List<Hoarding> hoardings;
 
-        if (category != null && city != null) {
+        // Default mode (no filters): max 20 items, paginated
+        if (category == null && city == null) {
+            int pageNum = (page != null && page > 0) ? page - 1 : 0; // 0-based for Spring
+            int pageSize = (limit != null && limit > 0) ? Math.min(limit, 20) : 20; // Max 20 for default
+            
+            Sort sortObj = (sort != null && sort.equalsIgnoreCase("latest")) 
+                ? Sort.by(Sort.Direction.DESC, "updatedAt")
+                : Sort.by(Sort.Direction.ASC, "id");
+            
+            Pageable pageable = PageRequest.of(pageNum, pageSize, sortObj);
+            Page<Hoarding> hoardingPage = hoardingRepository.findAll(pageable);
+            hoardings = hoardingPage.getContent();
+        } else if (category != null && city != null) {
             try {
                 HoardingCategory cat = HoardingCategory.valueOf(category.toUpperCase());
                 hoardings = hoardingRepository.findByCategoryAndCityIgnoreCase(cat, city);

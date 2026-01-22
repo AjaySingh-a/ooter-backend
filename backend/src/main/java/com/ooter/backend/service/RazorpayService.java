@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import java.util.Base64;
 import java.util.Map;
 import java.util.Objects;
 
@@ -74,8 +73,14 @@ public class RazorpayService {
             String data = orderId + "|" + paymentId;
             String generatedSignature = generateSignature(data, razorpayConfig.getSecretKey());
             
-            boolean isValid = generatedSignature.equals(signature);
+            // Razorpay sends signatures in hexadecimal format (lowercase)
+            // Compare case-insensitively to handle any case variations
+            boolean isValid = generatedSignature.equalsIgnoreCase(signature);
+            
             log.info("Payment verification for order {}: {}", orderId, isValid ? "VALID" : "INVALID");
+            if (!isValid) {
+                log.warn("Signature mismatch - Expected: {}, Received: {}", generatedSignature, signature);
+            }
             
             return isValid;
         } catch (Exception e) {
@@ -89,7 +94,18 @@ public class RazorpayService {
         SecretKeySpec keySpec = new SecretKeySpec(secret.getBytes(), "HmacSHA256");
         sha256Hmac.init(keySpec);
         byte[] hash = sha256Hmac.doFinal(data.getBytes());
-        return Base64.getEncoder().encodeToString(hash);
+        
+        // Razorpay uses hexadecimal format (not Base64)
+        // Convert byte array to hex string
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : hash) {
+            String hex = Integer.toHexString(0xff & b);
+            if (hex.length() == 1) {
+                hexString.append('0');
+            }
+            hexString.append(hex);
+        }
+        return hexString.toString();
     }
 
 

@@ -35,6 +35,7 @@ public class BookingDetailResponse {
     private boolean mountingStarted;
     private boolean siteLive;
 
+    private String bookingDate;
     private String mediaDownloadDate;
     private String printingStartDate;
     private String mountingStartDate;
@@ -68,6 +69,7 @@ public class BookingDetailResponse {
                 .transactionId(b.getTransactionId())
                 .amountPaid(b.getPaidAmount() != null ? b.getPaidAmount() : 0.0)
                 .paymentDate(b.getPaymentDate() != null ? b.getPaymentDate().toString() : null)
+                .bookingDate(b.getBookingDate() != null ? b.getBookingDate().toString() : null)
                 .mediaDownloaded(b.isMediaDownloaded())
                 .printingStarted(b.isPrintingStarted())
                 .mountingStarted(b.isMountingStarted())

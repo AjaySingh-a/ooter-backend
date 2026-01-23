@@ -60,6 +60,14 @@ public class BookingService {
             booking.setOrderId(razorpayOrderId);
             booking.setTransactionId(transactionId);
             booking.setBookingDate(LocalDate.now());
+            booking.setPaymentDate(LocalDate.now());
+            // Calculate total paid amount: totalPrice + printingCharges + mountingCharges + gst - discount
+            double totalPaidAmount = request.getTotalPrice() + 
+                                    request.getPrintingCharges() + 
+                                    request.getMountingCharges() + 
+                                    request.getGst() - 
+                                    request.getDiscount();
+            booking.setPaidAmount(totalPaidAmount);
             booking.setStatus(BookingStatus.CONFIRMED);
 
             Booking saved = bookingRepository.save(booking);

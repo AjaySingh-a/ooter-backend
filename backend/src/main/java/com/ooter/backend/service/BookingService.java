@@ -68,6 +68,12 @@ public class BookingService {
                                     request.getGst() - 
                                     request.getDiscount();
             booking.setPaidAmount(totalPaidAmount);
+            // Calculate settlement amount for vendor: base amount (totalPrice + printingCharges + mountingCharges)
+            // This is what the vendor receives (before commission, GST, and discount)
+            double settlementAmount = request.getTotalPrice() + 
+                                     request.getPrintingCharges() + 
+                                     request.getMountingCharges();
+            booking.setSettlementAmount(settlementAmount);
             booking.setStatus(BookingStatus.CONFIRMED);
 
             Booking saved = bookingRepository.save(booking);

@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -439,22 +440,26 @@ public class VendorController {
             return ResponseEntity.status(403).body(new MessageResponse("Access denied"));
         }
 
+        // Use IST timezone for date calculations
+        ZoneId istZone = ZoneId.of("Asia/Kolkata");
+        LocalDate currentDateInIST = LocalDate.now(istZone);
+        
         switch (step) {
             case "media" -> {
                 booking.setMediaDownloaded(true);
-                booking.setMediaDownloadDate(LocalDate.now());
+                booking.setMediaDownloadDate(currentDateInIST);
             }
             case "printing" -> {
                 booking.setPrintingStarted(true);
-                booking.setPrintingStartDate(LocalDate.now());
+                booking.setPrintingStartDate(currentDateInIST);
             }
             case "mounting" -> {
                 booking.setMountingStarted(true);
-                booking.setMountingStartDate(LocalDate.now());
+                booking.setMountingStartDate(currentDateInIST);
             }
             case "live" -> {
                 booking.setSiteLive(true);
-                booking.setSiteLiveDate(LocalDate.now());
+                booking.setSiteLiveDate(currentDateInIST);
             }
             default -> {
                 return ResponseEntity.badRequest().body(new MessageResponse("Invalid step"));

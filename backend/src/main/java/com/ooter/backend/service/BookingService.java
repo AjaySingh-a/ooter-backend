@@ -1,6 +1,7 @@
 package com.ooter.backend.service;
 
 import com.ooter.backend.dto.BookingOrderRequest;
+import com.ooter.backend.dto.UploadedFileRequest;
 import com.ooter.backend.entity.*;
 import com.ooter.backend.exception.BookingException;
 import com.ooter.backend.exception.NotFoundException;
@@ -211,5 +212,45 @@ public class BookingService {
         }
 
         return uploadedFiles;
+    }
+
+    @Transactional
+    public List<UploadedFile> saveUploadedFileUrls(Long bookingId, List<UploadedFileRequest> files) {
+        if (files == null || files.isEmpty()) {
+            throw new IllegalArgumentException("Files list cannot be empty");
+        }
+
+        if (files.size() > MAX_UPLOAD_FILES) {
+            throw new BookingException("Maximum " + MAX_UPLOAD_FILES + " files can be uploaded");
+        }
+
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new NotFoundException("Booking not found with ID: " + bookingId));
+
+        List<UploadedFile> existing = uploadedFileRepository.findByBookingId(bookingId);
+        if (existing.size() + files.size() > MAX_UPLOAD_FILES) {
+            throw new BookingException("Maximum " + MAX_UPLOAD_FILES + " files can be uploaded");
+        }
+
+        List<UploadedFile> saved = new ArrayList<>();
+        for (UploadedFileRequest file : files) {
+            if (file == null) continue;
+            String name = file.getName();
+            String url = file.getUrl();
+            if (url == null || url.trim().isEmpty()) {
+                continue;
+            }
+
+            UploadedFile uploadedFile = UploadedFile.builder()
+                    .booking(booking)
+                    .name(name)
+                    .url(url)
+                    .build();
+
+            uploadedFileRepository.save(uploadedFile);
+            saved.add(uploadedFile);
+        }
+
+        return saved;
     }
 }

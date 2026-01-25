@@ -3,6 +3,7 @@ package com.ooter.backend.controller;
 import java.time.temporal.ChronoUnit;
 import com.ooter.backend.dto.*;
 import com.ooter.backend.entity.*;
+import com.ooter.backend.exception.BookingException;
 import com.ooter.backend.repository.*;
 import com.ooter.backend.service.*;
 import com.razorpay.RazorpayException;
@@ -268,6 +269,30 @@ public class BookingController {
 
         List<UploadedFile> files = uploadedFileRepository.findByBookingId(bookingId);
         return ResponseEntity.ok(files);
+    }
+
+    /**
+     * Save already-uploaded (Cloudinary) URLs for a booking.
+     * Frontend uploads file(s) to Cloudinary and sends {name,url} here.
+     */
+    @PostMapping("/{bookingId}/uploads")
+    public ResponseEntity<?> saveUploadedFiles(
+            @PathVariable Long bookingId,
+            @RequestBody List<UploadedFileRequest> files,
+            @AuthenticationPrincipal User user) {
+        if (user == null) return ResponseEntity.status(401).body("Unauthorized");
+
+        try {
+            List<UploadedFile> saved = bookingService.saveUploadedFileUrls(bookingId, files);
+            return ResponseEntity.ok(saved);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (BookingException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            log.error("Failed to save uploaded file URLs for bookingId={}", bookingId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to save uploaded files");
+        }
     }
 
     @DeleteMapping("/uploads/{fileId}")

@@ -235,18 +235,29 @@ public class BookingController {
             @PathVariable Long bookingId,
             @RequestParam("files") List<MultipartFile> files,
             @AuthenticationPrincipal User user) throws IOException {
-        if (user == null) return ResponseEntity.status(401).body("Unauthorized");
+        try {
+            if (user == null) return ResponseEntity.status(401).body("Unauthorized");
 
-        Booking booking = bookingService.getById(bookingId)
-                .orElseThrow(() -> new RuntimeException("Booking not found"));
+            bookingService.getById(bookingId)
+                    .orElseThrow(() -> new RuntimeException("Booking not found"));
 
-        List<UploadedFile> existing = uploadedFileRepository.findByBookingId(bookingId);
-        if (existing.size() + files.size() > 3) {
-            return ResponseEntity.badRequest().body("Maximum 3 photos can be uploaded.");
+            List<UploadedFile> existing = uploadedFileRepository.findByBookingId(bookingId);
+            if (existing.size() + files.size() > 3) {
+                return ResponseEntity.badRequest().body("Maximum 3 files can be uploaded.");
+            }
+
+            List<UploadedFile> uploaded = bookingService.uploadBookingFiles(bookingId, files);
+            return ResponseEntity.ok(uploaded);
+        } catch (IOException e) {
+            log.error("File upload failed for bookingId={}", bookingId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "status", "error",
+                            "message", "File upload failed on server. Please try again.",
+                            "code", 500
+                    ));
         }
-
-        List<UploadedFile> uploaded = bookingService.uploadBookingFiles(bookingId, files);
-        return ResponseEntity.ok(uploaded);
     }
 
     @GetMapping("/{bookingId}/uploads")

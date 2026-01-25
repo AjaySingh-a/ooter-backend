@@ -1,5 +1,6 @@
 package com.ooter.backend.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -21,5 +22,6 @@ public class UploadedFile {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "booking_id")
+    @JsonIgnore // prevent Jackson from serializing lazy Hibernate proxies
     private Booking booking; // 🔁 Many files can be attached to one booking
 }

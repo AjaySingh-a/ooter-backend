@@ -11,6 +11,7 @@ import java.time.LocalDate;
 @AllArgsConstructor
 @Builder
 public class BookingProgressResponse {
+    private Long id; // ✅ Booking ID (numeric) - needed for fetching uploads
     private String orderId;
     private String siteName;
     private String siteType;
@@ -55,6 +56,7 @@ public class BookingProgressResponse {
         }
 
         return BookingProgressResponse.builder()
+                .id(booking.getId()) // ✅ Include numeric booking ID
                 .orderId(booking.getOrderId())
                 .siteName(booking.getHoarding().getName())
                 .siteType(booking.getHoarding().getSiteType())

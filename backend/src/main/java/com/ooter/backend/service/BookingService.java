@@ -228,6 +228,10 @@ public class BookingService {
                 .orElseThrow(() -> new NotFoundException("Booking not found with ID: " + bookingId));
 
         List<UploadedFile> existing = uploadedFileRepository.findByBookingId(bookingId);
+        // One-time upload: once user submitted designs, they cannot replace or add more
+        if (!existing.isEmpty()) {
+            throw new BookingException("Design already uploaded. You cannot upload again.");
+        }
         if (existing.size() + files.size() > MAX_UPLOAD_FILES) {
             throw new BookingException("Maximum " + MAX_UPLOAD_FILES + " files can be uploaded");
         }

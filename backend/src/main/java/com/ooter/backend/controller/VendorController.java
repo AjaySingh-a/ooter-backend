@@ -152,8 +152,24 @@ public class VendorController {
 
         try {
             userRepository.save(existingUser);
+
+            // Evict all user-related caches to prevent stale data
+            Cache userCache = cacheManager.getCache("users");
+            if (userCache != null) {
+                String userIdentifier = existingUser.getPhone() != null
+                    ? existingUser.getPhone()
+                    : existingUser.getEmail();
+                if (userIdentifier != null) {
+                    userCache.evict(userIdentifier);
+                }
+            }
+            Cache userProfileCache = cacheManager.getCache("userProfile");
+            if (userProfileCache != null && existingUser.getId() != null) {
+                userProfileCache.evict(existingUser.getId());
+            }
+
+            return ResponseEntity.ok(new MessageResponse("Vendor registration successful"));
         } catch (DataIntegrityViolationException e) {
-            // ✅ Handle database constraint violations (email/mobile uniqueness)
             String errorMessage = e.getMessage();
             if (errorMessage != null) {
                 if (errorMessage.contains("email") || errorMessage.contains("EMAIL")) {
@@ -168,30 +184,8 @@ public class VendorController {
             }
             return ResponseEntity.badRequest().body(new MessageResponse("Registration failed due to duplicate data. Please check your details."));
         } catch (Exception e) {
-            // ✅ Handle any other exceptions
             return ResponseEntity.status(500).body(new MessageResponse("Registration failed. Please try again later."));
         }
-        
-        // ✅ CRITICAL: Evict all user-related caches to prevent stale data
-        // 1. Evict users cache (used by JwtAuthFilter)
-        Cache userCache = cacheManager.getCache("users");
-        if (userCache != null) {
-            // Evict by user identifier (phone or email) - this is how JwtAuthFilter caches users
-            String userIdentifier = existingUser.getPhone() != null 
-                ? existingUser.getPhone() 
-                : existingUser.getEmail();
-            if (userIdentifier != null) {
-                userCache.evict(userIdentifier);
-            }
-        }
-        
-        // 2. Evict userProfile cache (used by /users/me endpoint)
-        Cache userProfileCache = cacheManager.getCache("userProfile");
-        if (userProfileCache != null && existingUser.getId() != null) {
-            userProfileCache.evict(existingUser.getId());
-        }
-        
-        return ResponseEntity.ok(new MessageResponse("Vendor registration successful"));
     }
 
     @GetMapping("/dashboard")

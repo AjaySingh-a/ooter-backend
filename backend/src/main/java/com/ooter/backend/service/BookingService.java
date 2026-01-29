@@ -6,6 +6,7 @@ import com.ooter.backend.entity.*;
 import com.ooter.backend.exception.BookingException;
 import com.ooter.backend.exception.NotFoundException;
 import com.ooter.backend.repository.BookingRepository;
+import com.ooter.backend.repository.ExecutionProofFileRepository;
 import com.ooter.backend.repository.HoardingRepository;
 import com.ooter.backend.repository.UploadedFileRepository;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +30,7 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final HoardingRepository hoardingRepository;
     private final UploadedFileRepository uploadedFileRepository;
+    private final ExecutionProofFileRepository executionProofFileRepository;
     private final FileStorageService fileStorageService;
     private final RazorpayService razorpayService;
 
@@ -253,6 +255,58 @@ public class BookingService {
 
             uploadedFileRepository.save(uploadedFile);
             saved.add(uploadedFile);
+        }
+
+        return saved;
+    }
+
+    public List<ExecutionProofFile> getExecutionProofFiles(Long bookingId) {
+        return executionProofFileRepository.findByBookingId(bookingId);
+    }
+
+    @Transactional
+    public List<ExecutionProofFile> saveExecutionProofUrls(Long bookingId, List<UploadedFileRequest> files) {
+        if (files == null || files.isEmpty()) {
+            throw new IllegalArgumentException("Files list cannot be empty");
+        }
+
+        if (files.size() > MAX_UPLOAD_FILES) {
+            throw new BookingException("Maximum " + MAX_UPLOAD_FILES + " files can be uploaded");
+        }
+
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new NotFoundException("Booking not found with ID: " + bookingId));
+
+        List<ExecutionProofFile> existing = executionProofFileRepository.findByBookingId(bookingId);
+        // One-time upload (no replace)
+        if (!existing.isEmpty()) {
+            throw new BookingException("Execution proof already uploaded. You cannot upload again.");
+        }
+
+        List<ExecutionProofFile> saved = new ArrayList<>();
+        for (UploadedFileRequest file : files) {
+            if (file == null) continue;
+            String name = file.getName();
+            String url = file.getUrl();
+            if (url == null || url.trim().isEmpty()) continue;
+
+            // Basic validation: must be Cloudinary image URL
+            String u = url.toLowerCase();
+            if (!u.contains("res.cloudinary.com") || !u.contains("/image/upload")) {
+                throw new BookingException("Only image proof URLs are supported.");
+            }
+
+            ExecutionProofFile ep = ExecutionProofFile.builder()
+                    .booking(booking)
+                    .name(name)
+                    .url(url)
+                    .build();
+            executionProofFileRepository.save(ep);
+            saved.add(ep);
+        }
+
+        if (saved.isEmpty()) {
+            throw new BookingException("No valid proof files to save.");
         }
 
         return saved;

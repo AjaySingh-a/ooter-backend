@@ -295,6 +295,70 @@ public class BookingController {
         }
     }
 
+    @GetMapping("/{bookingId}/execution-proof")
+    public ResponseEntity<?> getExecutionProof(
+            @PathVariable Long bookingId,
+            @AuthenticationPrincipal User user) {
+        if (user == null) return ResponseEntity.status(401).body("Unauthorized");
+
+        try {
+            Optional<Booking> bookingOpt = bookingRepository.findById(bookingId);
+            if (bookingOpt.isEmpty()) return ResponseEntity.status(404).body("Booking not found");
+            Booking booking = bookingOpt.get();
+
+            // Allow booking owner (customer) OR booking vendor
+            boolean isCustomer = booking.getUser() != null && booking.getUser().getId() != null
+                    && booking.getUser().getId().equals(user.getId());
+            boolean isVendor = booking.getHoarding() != null
+                    && booking.getHoarding().getOwner() != null
+                    && booking.getHoarding().getOwner().getId() != null
+                    && booking.getHoarding().getOwner().getId().equals(user.getId());
+
+            if (!isCustomer && !isVendor) {
+                return ResponseEntity.status(403).body("Access denied");
+            }
+
+            return ResponseEntity.ok(bookingService.getExecutionProofFiles(bookingId));
+        } catch (Exception e) {
+            log.error("Failed to get execution proof for bookingId={}", bookingId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to fetch execution proof");
+        }
+    }
+
+    @PostMapping("/{bookingId}/execution-proof")
+    public ResponseEntity<?> saveExecutionProof(
+            @PathVariable Long bookingId,
+            @RequestBody List<UploadedFileRequest> files,
+            @AuthenticationPrincipal User user) {
+        if (user == null) return ResponseEntity.status(401).body("Unauthorized");
+
+        try {
+            Optional<Booking> bookingOpt = bookingRepository.findById(bookingId);
+            if (bookingOpt.isEmpty()) return ResponseEntity.status(404).body("Booking not found");
+            Booking booking = bookingOpt.get();
+
+            // Only vendor who owns this booking can upload proof
+            boolean isVendor = user.getRole() == Role.VENDOR
+                    && booking.getHoarding() != null
+                    && booking.getHoarding().getOwner() != null
+                    && booking.getHoarding().getOwner().getId() != null
+                    && booking.getHoarding().getOwner().getId().equals(user.getId());
+
+            if (!isVendor) {
+                return ResponseEntity.status(403).body("Access denied");
+            }
+
+            return ResponseEntity.ok(bookingService.saveExecutionProofUrls(bookingId, files));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (BookingException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            log.error("Failed to save execution proof for bookingId={}", bookingId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to save execution proof");
+        }
+    }
+
     @DeleteMapping("/uploads/{fileId}")
     public ResponseEntity<?> deleteUploadedFile(
             @PathVariable Long fileId,

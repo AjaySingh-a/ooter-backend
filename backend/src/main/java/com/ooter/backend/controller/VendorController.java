@@ -17,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
 import java.io.IOException;
@@ -30,6 +31,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/vendors")
 @CrossOrigin(origins = "*")
@@ -341,33 +343,19 @@ public class VendorController {
     }
 
     @GetMapping("/bookings/in-progress")
-    @Cacheable(value = "inProgressBookings", key = "#user.id", unless = "#result == null || #result.body == null")
     public ResponseEntity<?> getInProgressBookings(
-            @AuthenticationPrincipal User user,
-            @RequestHeader(value = "If-Modified-Since", required = false) String ifModifiedSince) {
+            @AuthenticationPrincipal User user) {
         if (user == null || user.getRole() != Role.VENDOR)
             return ResponseEntity.status(403).body(new MessageResponse("Access denied"));
 
-        Instant lastUpdate = bookingRepository.findMaxUpdatedAtByVendor(user.getId())
-                .orElse(Instant.now());
-
-        if (ifModifiedSince != null) {
-            Instant modifiedSince = parseHttpDate(ifModifiedSince);
-            if (modifiedSince != null && !lastUpdate.isAfter(modifiedSince)) {
-                return ResponseEntity.status(304).build();
-            }
-        }
-
         List<Booking> inProgressBookings = bookingRepository.findInProgressBookingsByVendor(user.getId());
+        log.info("Vendor bookings list: vendorId={}, count={}", user.getId(), inProgressBookings.size());
 
         List<BookingProgressResponse> response = inProgressBookings.stream()
                 .map(BookingProgressResponse::from)
                 .toList();
 
-        return ResponseEntity.ok()
-                .cacheControl(CacheControl.maxAge(30, TimeUnit.MINUTES))
-                .lastModified(lastUpdate)
-                .body(response);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/bookings/{orderId}")

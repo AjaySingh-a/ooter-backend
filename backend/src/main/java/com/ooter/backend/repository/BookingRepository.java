@@ -70,11 +70,10 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     AND b.endDate >= CURRENT_DATE
     """)
     boolean existsActiveBookingForHoarding(@Param("hoardingId") Long hoardingId);
-    // ✅ In-progress bookings for a vendor (siteLive = false)
+    // ✅ All vendor bookings (no filter on siteLive — booking stays in list after Site is Live)
     @Query("""
         SELECT b FROM Booking b 
         WHERE b.vendor.id = :vendorId 
-        AND b.siteLive = false 
         ORDER BY b.id DESC
     """)
     List<Booking> findInProgressBookingsByVendor(@Param("vendorId") Long vendorId);

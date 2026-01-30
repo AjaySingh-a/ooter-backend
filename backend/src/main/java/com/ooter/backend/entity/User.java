@@ -59,6 +59,12 @@ public class User implements UserDetails {
     private String allotmentCertificateUrl;
     private LocalDateTime certificatesUploadedAt;
 
+    // Vendor payout – bank/UPI for receiving 85% settlement
+    private String accountHolderName;
+    private String accountNumber;
+    private String ifscCode;
+    private String upiId;
+
     @Column(name = "google_id")
     private String googleId;
 

@@ -352,6 +352,53 @@ public class VendorController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/bank-details")
+    public ResponseEntity<?> getBankDetails(@AuthenticationPrincipal User user) {
+        if (user == null || user.getRole() != Role.VENDOR)
+            return ResponseEntity.status(403).body(new MessageResponse("Access denied"));
+
+        java.util.Map<String, String> body = new java.util.HashMap<>();
+        body.put("accountHolderName", user.getAccountHolderName());
+        body.put("accountNumber", user.getAccountNumber());
+        body.put("ifscCode", user.getIfscCode());
+        body.put("upiId", user.getUpiId());
+        return ResponseEntity.ok(body);
+    }
+
+    @PutMapping("/bank-details")
+    @CacheEvict(value = {"vendorDashboard", "vendorListings"}, key = "#user.id")
+    public ResponseEntity<?> updateBankDetails(
+            @AuthenticationPrincipal User user,
+            @RequestBody VendorBankDetailsRequest request) {
+        if (user == null || user.getRole() != Role.VENDOR)
+            return ResponseEntity.status(403).body(new MessageResponse("Access denied"));
+
+        boolean hasBank = request.getAccountNumber() != null && !request.getAccountNumber().trim().isEmpty()
+                && request.getIfscCode() != null && !request.getIfscCode().trim().isEmpty();
+        boolean hasUpi = request.getUpiId() != null && !request.getUpiId().trim().isEmpty();
+        if (!hasBank && !hasUpi)
+            return ResponseEntity.badRequest().body(new MessageResponse("Provide either bank account (account number + IFSC) or UPI ID."));
+
+        if (hasBank && (request.getAccountHolderName() == null || request.getAccountHolderName().trim().isEmpty()))
+            return ResponseEntity.badRequest().body(new MessageResponse("Account holder name is required for bank account."));
+
+        User vendor = userRepository.findById(user.getId()).orElse(null);
+        if (vendor == null) return ResponseEntity.status(404).body(new MessageResponse("User not found"));
+
+        vendor.setAccountHolderName(request.getAccountHolderName() != null ? request.getAccountHolderName().trim() : null);
+        vendor.setAccountNumber(request.getAccountNumber() != null ? request.getAccountNumber().trim() : null);
+        vendor.setIfscCode(request.getIfscCode() != null ? request.getIfscCode().trim().toUpperCase() : null);
+        vendor.setUpiId(request.getUpiId() != null ? request.getUpiId().trim() : null);
+        userRepository.save(vendor);
+
+        java.util.Map<String, String> body = new java.util.HashMap<>();
+        body.put("accountHolderName", vendor.getAccountHolderName());
+        body.put("accountNumber", vendor.getAccountNumber());
+        body.put("ifscCode", vendor.getIfscCode());
+        body.put("upiId", vendor.getUpiId());
+        return ResponseEntity.ok(body);
+    }
+
     @GetMapping("/bookings/{orderId}")
     @Cacheable(value = "bookingDetails", key = "#orderId", unless = "#result == null || #result.body == null")
     public ResponseEntity<?> getBookingDetail(

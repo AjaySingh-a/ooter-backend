@@ -5,6 +5,7 @@ import com.ooter.backend.entity.*;
 import com.ooter.backend.repository.BookingRepository;
 import com.ooter.backend.repository.HoardingRepository;
 import com.ooter.backend.repository.UserRepository;
+import com.ooter.backend.service.BookingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
@@ -41,6 +42,7 @@ public class VendorController {
     private final UserRepository userRepository;
     private final HoardingRepository hoardingRepository;
     private final BookingRepository bookingRepository;
+    private final BookingService bookingService;
     private final CacheManager cacheManager;
     private static final DateTimeFormatter HTTP_HEADER_DATE_FORMAT = DateTimeFormatter.RFC_1123_DATE_TIME;
 
@@ -349,6 +351,15 @@ public class VendorController {
                 .map(BookingProgressResponse::from)
                 .toList();
 
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/bookings/eligible-payout")
+    public ResponseEntity<?> getEligiblePayoutBookings(@AuthenticationPrincipal User user) {
+        if (user == null || user.getRole() != Role.VENDOR)
+            return ResponseEntity.status(403).body(new MessageResponse("Access denied"));
+
+        List<EligiblePayoutResponse> response = bookingService.getEligiblePayoutsForVendor(user.getId());
         return ResponseEntity.ok(response);
     }
 

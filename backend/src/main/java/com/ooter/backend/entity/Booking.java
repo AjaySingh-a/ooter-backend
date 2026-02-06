@@ -85,6 +85,11 @@ public class Booking {
 
     private boolean paidToVendor = false;
 
+    // 3-piece payout: 25% on live+proof, 25% at mid, 50% at end
+    private boolean paid25OnLive = false;
+    private boolean paid25OnMid = false;
+    private boolean paid50OnEnd = false;
+
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL,orphanRemoval = true)
     private List<UploadedFile> uploadedFiles;
 
@@ -93,6 +98,11 @@ public class Booking {
     private double settlementAmount;
 
     private LocalDate siteLiveDate;
+
+    // Vendor payout audit (Phase 2: set when RazorpayX payout is done)
+    private String payoutId;
+    private Instant payoutDate;
+    private Double commissionAmount;
 
     @Column(name = "order_id",unique = true, nullable = false)
     private String orderId; // Used to track booking externally

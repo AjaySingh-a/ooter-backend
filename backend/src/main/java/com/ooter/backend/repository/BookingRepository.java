@@ -105,8 +105,14 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
-
-    
-
-
+    // Eligible for vendor payout (any phase): CONFIRMED, paid, not fully paid (kept for backward compat)
+    @Query("""
+        SELECT b FROM Booking b
+        WHERE b.vendor.id = :vendorId
+        AND b.status = com.ooter.backend.entity.BookingStatus.CONFIRMED
+        AND b.paidAmount > 0
+        AND b.paid50OnEnd = false
+        ORDER BY b.id DESC
+        """)
+    List<Booking> findVendorBookingsNotFullyPaid(@Param("vendorId") Long vendorId);
 }

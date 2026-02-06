@@ -1,6 +1,7 @@
 package com.ooter.backend.service;
 
 import com.ooter.backend.dto.BookingOrderRequest;
+import com.ooter.backend.dto.EligiblePayoutResponse;
 import com.ooter.backend.dto.UploadedFileRequest;
 import com.ooter.backend.entity.*;
 import com.ooter.backend.exception.BookingException;
@@ -18,6 +19,7 @@ import org.springframework.cache.annotation.CacheEvict;
 
 import java.io.IOException;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -71,12 +73,10 @@ public class BookingService {
                                     request.getGst() - 
                                     request.getDiscount();
             booking.setPaidAmount(totalPaidAmount);
-            // Calculate settlement amount for vendor: base amount (totalPrice + printingCharges + mountingCharges)
-            // This is what the vendor receives (before commission, GST, and discount)
-            double settlementAmount = request.getTotalPrice() + 
-                                     request.getPrintingCharges() + 
-                                     request.getMountingCharges();
+            // Vendor gets only what they asked: hoarding + printing + mounting (not % of paid amount)
+            double settlementAmount = request.getTotalPrice() + request.getPrintingCharges() + request.getMountingCharges();
             booking.setSettlementAmount(settlementAmount);
+            booking.setCommissionAmount(totalPaidAmount - settlementAmount);
             booking.setStatus(BookingStatus.CONFIRMED);
 
             Booking saved = bookingRepository.save(booking);
@@ -310,5 +310,89 @@ public class BookingService {
         }
 
         return saved;
+    }
+
+    /** Mid of booking period: startDate + half of (endDate - startDate). */
+    private LocalDate midDateOfBooking(LocalDate startDate, LocalDate endDate) {
+        long days = ChronoUnit.DAYS.between(startDate, endDate);
+        return startDate.plusDays(days / 2);
+    }
+
+    /** Phase 1: 25% when site live + execution proof uploaded. */
+    public boolean isEligibleForPayout25Live(Booking booking) {
+        if (booking.getStatus() != BookingStatus.CONFIRMED) return false;
+        if (booking.getPaidAmount() == null || booking.getPaidAmount() <= 0) return false;
+        if (!booking.isSiteLive()) return false;
+        if (booking.isPaid25OnLive()) return false;
+        List<ExecutionProofFile> proofs = executionProofFileRepository.findByBookingId(booking.getId());
+        return proofs != null && !proofs.isEmpty();
+    }
+
+    /** Phase 2: 25% when mid of booking has passed. */
+    public boolean isEligibleForPayout25Mid(Booking booking, LocalDate today) {
+        if (!booking.isPaid25OnLive()) return false;
+        if (booking.isPaid25OnMid()) return false;
+        LocalDate mid = midDateOfBooking(booking.getStartDate(), booking.getEndDate());
+        return !today.isBefore(mid);
+    }
+
+    /** Phase 3: 50% when booking duration is complete (endDate passed). */
+    public boolean isEligibleForPayout50End(Booking booking, LocalDate today) {
+        if (!booking.isPaid25OnMid()) return false;
+        if (booking.isPaid50OnEnd()) return false;
+        return !today.isBefore(booking.getEndDate());
+    }
+
+    /** Check if booking is eligible for any payout phase. */
+    public boolean isEligibleForPayout(Long bookingId) {
+        Booking booking = bookingRepository.findById(bookingId).orElse(null);
+        if (booking == null) return false;
+        LocalDate today = LocalDate.now();
+        return isEligibleForPayout25Live(booking)
+                || isEligibleForPayout25Mid(booking, today)
+                || isEligibleForPayout50End(booking, today);
+    }
+
+    /** List eligible payouts for vendor: each item is one phase (25%, 25%, or 50%) due for a booking. */
+    public List<EligiblePayoutResponse> getEligiblePayoutsForVendor(Long vendorId) {
+        List<Booking> bookings = bookingRepository.findVendorBookingsNotFullyPaid(vendorId);
+        LocalDate today = LocalDate.now();
+        List<EligiblePayoutResponse> result = new ArrayList<>();
+        for (Booking b : bookings) {
+            double settlement = b.getSettlementAmount();
+            String siteName = b.getHoarding() != null ? b.getHoarding().getName() : "";
+            if (isEligibleForPayout25Live(b)) {
+                result.add(EligiblePayoutResponse.builder()
+                        .bookingId(b.getId())
+                        .orderId(b.getOrderId())
+                        .siteName(siteName)
+                        .settlementAmount(settlement)
+                        .phase(1)
+                        .amount(settlement * 0.25)
+                        .dueCondition("Site is live and execution proof uploaded")
+                        .build());
+            } else if (isEligibleForPayout25Mid(b, today)) {
+                result.add(EligiblePayoutResponse.builder()
+                        .bookingId(b.getId())
+                        .orderId(b.getOrderId())
+                        .siteName(siteName)
+                        .settlementAmount(settlement)
+                        .phase(2)
+                        .amount(settlement * 0.25)
+                        .dueCondition("Mid of booking period")
+                        .build());
+            } else if (isEligibleForPayout50End(b, today)) {
+                result.add(EligiblePayoutResponse.builder()
+                        .bookingId(b.getId())
+                        .orderId(b.getOrderId())
+                        .siteName(siteName)
+                        .settlementAmount(settlement)
+                        .phase(3)
+                        .amount(settlement * 0.50)
+                        .dueCondition("Booking duration complete")
+                        .build());
+            }
+        }
+        return result;
     }
 }

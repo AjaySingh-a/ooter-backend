@@ -5,7 +5,7 @@ import com.ooter.backend.entity.Booking;
 import com.ooter.backend.entity.User;
 import com.ooter.backend.exception.PaymentException;
 import com.ooter.backend.service.BookingService;
-import com.ooter.backend.service.RazorpayService;
+import com.ooter.backend.service.CashfreeService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,7 +24,7 @@ import java.util.HashMap;
 @RequiredArgsConstructor
 public class PaymentController {
 
-    private final RazorpayService razorpayService;
+    private final CashfreeService cashfreeService;
     private final BookingService bookingService;
 
     @PostMapping("/create-order")
@@ -39,41 +39,39 @@ public class PaymentController {
             // Calculate total amount
             double totalAmount = calculateTotalAmount(request);
             
-            // Razorpay minimum is ₹1 (100 paise), but for testing allow 1 paise (0.01)
-            // If amount is 0 or negative, set to minimum 1 paise for testing
+            // Cashfree minimum is ₹1
             if (totalAmount <= 0) {
-                log.warn("Calculated amount is {} (zero or negative), setting to minimum 1 paise for testing", totalAmount);
-                totalAmount = 0.01; // 1 paise minimum for testing
+                log.warn("Calculated amount is {} (zero or negative), setting to minimum ₹1", totalAmount);
+                totalAmount = 1.0;
             }
-            
-            // Ensure minimum ₹1 for Razorpay (100 paise)
-            // If less than ₹1, set to ₹1
             if (totalAmount < 1.0) {
-                log.info("Amount {} is less than ₹1, setting to minimum ₹1 for Razorpay", totalAmount);
                 totalAmount = 1.0;
             }
 
-            int amountInPaise = (int) (totalAmount * 100);
+            Map<String, String> orderTags = new HashMap<>();
+            orderTags.put("hoardingId", request.getHoardingId().toString());
+            orderTags.put("userId", user.getId().toString());
 
-            // Create Razorpay order with additional metadata
-            Map<String, String> notes = new HashMap<>();
-            notes.put("hoardingId", request.getHoardingId().toString());
-            notes.put("userId", user.getId().toString());
+            // Return URL not required when using SDK promise; use placeholder for API requirement
+            String returnUrl = "https://ooter.app/payment/return";
 
-            String orderId = razorpayService.createOrder(
-                    amountInPaise,
+            CashfreeService.CreateOrderResult result = cashfreeService.createOrder(
+                    totalAmount,
                     "INR",
-                    "booking_user_" + user.getId(),
-                    notes
+                    "user_" + user.getId(),
+                    user.getPhone() != null ? user.getPhone() : null,
+                    user.getEmail() != null ? user.getEmail() : null,
+                    returnUrl,
+                    orderTags
             );
 
-            log.info("Order created successfully for user {}: {}", user.getId(), orderId);
+            log.info("Cashfree order created for user {}: {}", user.getId(), result.getOrderId());
             
             return ResponseEntity.ok(new CreateOrderResponse(
-                    orderId,
-                    amountInPaise,
-                    "INR",
-                    razorpayService.getKeyId()
+                    result.getOrderId(),
+                    result.getPaymentSessionId(),
+                    result.getOrderAmount(),
+                    result.getOrderCurrency()
             ));
 
         } catch (IllegalArgumentException e) {
@@ -97,28 +95,27 @@ public class PaymentController {
             // Validate user
             Objects.requireNonNull(user, "User authentication required");
 
-            // Verify payment signature
-            boolean isValid = razorpayService.verifyPayment(
-                    request.getRazorpayOrderId(),
-                    request.getRazorpayPaymentId(),
-                    request.getRazorpaySignature()
-            );
+            // Verify payment with Cashfree (GET order status)
+            String orderId = request.getOrderId();
+            boolean isValid = cashfreeService.verifyPayment(orderId);
 
             if (!isValid) {
-                log.warn("Invalid payment signature for order {}", request.getRazorpayOrderId());
-                return ResponseEntity.badRequest().body("Invalid payment signature");
+                log.warn("Cashfree order not PAID: {}", orderId);
+                return ResponseEntity.badRequest().body("Payment not verified or order not completed");
             }
 
             // Convert and validate booking request
             BookingOrderRequest bookingRequest = convertToBookingRequest(request);
             validateBookingRequest(bookingRequest);
 
+            String transactionId = request.getPaymentId() != null && !request.getPaymentId().isEmpty()
+                    ? request.getPaymentId() : orderId;
+
             // Create confirmed booking
             Booking booking = bookingService.createConfirmedBookingAfterPayment(
                     bookingRequest,
-                    request.getRazorpayPaymentId(),
-                    request.getRazorpayOrderId(),
-                    request.getRazorpaySignature(),
+                    transactionId,
+                    orderId,
                     user
             );
 
@@ -208,9 +205,8 @@ public class PaymentController {
 
     @Data
     public static class PaymentVerificationRequest {
-        private String razorpayOrderId;
-        private String razorpayPaymentId;
-        private String razorpaySignature;
+        private String orderId;
+        private String paymentId;
         private Long hoardingId;
         private String startDate;
         private String endDate;
@@ -225,9 +221,9 @@ public class PaymentController {
     @RequiredArgsConstructor
     public static class CreateOrderResponse {
         private final String orderId;
-        private final int amount;
+        private final String paymentSessionId;
+        private final double amount;
         private final String currency;
-        private final String keyId;
     }
 
     @Data

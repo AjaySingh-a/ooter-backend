@@ -34,19 +34,13 @@ public class BookingService {
     private final UploadedFileRepository uploadedFileRepository;
     private final ExecutionProofFileRepository executionProofFileRepository;
     private final FileStorageService fileStorageService;
-    private final RazorpayService razorpayService;
 
     private static final int MAX_UPLOAD_FILES = 3;
 
     @Transactional
-    public Booking createConfirmedBookingAfterPayment(BookingOrderRequest request, String transactionId, String razorpayOrderId, String razorpaySignature, User user) {
+    public Booking createConfirmedBookingAfterPayment(BookingOrderRequest request, String transactionId, String orderId, User user) {
         try {
-            // ✅ Razorpay signature verification
-            boolean isValid = razorpayService.verifyPayment(razorpayOrderId, transactionId, razorpaySignature);
-            if (!isValid) {
-                log.warn("Invalid payment signature for orderId={}, paymentId={}", razorpayOrderId, transactionId);
-                throw new BookingException("Payment verification failed. Booking not created.");
-            }
+            // Payment already verified by controller (Cashfree order status PAID)
 
             Hoarding hoarding = hoardingRepository.findById(request.getHoardingId())
                     .orElseThrow(() -> new NotFoundException("Hoarding not found with ID: " + request.getHoardingId()));
@@ -62,7 +56,7 @@ public class BookingService {
             booking.setMountingCharges(request.getMountingCharges());
             booking.setDiscount(request.getDiscount());
             booking.setGst(request.getGst());
-            booking.setOrderId(razorpayOrderId);
+            booking.setOrderId(orderId);
             booking.setTransactionId(transactionId);
             booking.setBookingDate(LocalDate.now());
             booking.setPaymentDate(LocalDate.now());
@@ -82,7 +76,7 @@ public class BookingService {
             Booking saved = bookingRepository.save(booking);
             updateHoardingStatus(hoarding, HoardingStatus.BOOKED);
 
-            log.info("✅ Booking confirmed after verified payment. Booking ID: {}, Order ID: {}", saved.getId(), razorpayOrderId);
+            log.info("✅ Booking confirmed after verified payment. Booking ID: {}, Order ID: {}", saved.getId(), orderId);
             return saved;
 
         } catch (Exception e) {

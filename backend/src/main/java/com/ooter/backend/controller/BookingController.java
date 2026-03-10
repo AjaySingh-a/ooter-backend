@@ -6,7 +6,6 @@ import com.ooter.backend.entity.*;
 import com.ooter.backend.exception.BookingException;
 import com.ooter.backend.repository.*;
 import com.ooter.backend.service.*;
-import com.razorpay.RazorpayException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +26,7 @@ import java.util.concurrent.TimeUnit;
 public class BookingController {
 
     private final BookingService bookingService;
-    private final RazorpayService razorpayService;
+    private final CashfreeService cashfreeService;
     private final HoardingRepository hoardingRepository;
     private final UserRepository userRepository;
     private final UploadedFileRepository uploadedFileRepository;
@@ -139,16 +138,22 @@ public class BookingController {
             if (months <= 0) months = 1;
             double total = hoarding.getPricePerMonth() * months;
 
-            Map<String, String> notes = new HashMap<>();
-            notes.put("hoardingId", hoardingId.toString());
-            notes.put("userId", user.getId().toString());
-            
-            String orderId = razorpayService.createOrder(
-                (int) amount,
+            Map<String, String> orderTags = new HashMap<>();
+            orderTags.put("hoardingId", hoardingId.toString());
+            orderTags.put("userId", user.getId().toString());
+            double amountRupees = amount >= 100 ? amount / 100.0 : amount;
+            if (amountRupees < 1.0) amountRupees = 1.0;
+
+            CashfreeService.CreateOrderResult result = cashfreeService.createOrder(
+                amountRupees,
                 "INR",
-                "Booking for hoarding " + hoarding.getId(),
-                notes
+                "user_" + user.getId(),
+                user.getPhone(),
+                user.getEmail(),
+                "https://ooter.app/payment/return",
+                orderTags
             );
+            String orderId = result.getOrderId();
 
             Booking booking = new Booking();
             booking.setUser(user);
@@ -171,9 +176,6 @@ public class BookingController {
 
         } catch (Exception e) {
             log.error("Error creating booking with payment", e);
-            if (e.getCause() instanceof RazorpayException) {
-                return ResponseEntity.status(500).body("Payment gateway error: " + e.getCause().getMessage());
-            }
             return ResponseEntity.badRequest().body("Error creating booking: " + e.getMessage());
         }
     }

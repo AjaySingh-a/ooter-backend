@@ -86,8 +86,14 @@ public class Booking {
     private boolean paidToVendor = false;
 
     // 3-piece payout: 25% on live+proof, 25% at mid, 50% at end
+    // NOTE: Explicit column names avoid Hibernate generating ambiguous names around digits.
+    @Column(name = "paid_25_on_live")
     private boolean paid25OnLive = false;
+
+    @Column(name = "paid_25_on_mid")
     private boolean paid25OnMid = false;
+
+    @Column(name = "paid_50_on_end")
     private boolean paid50OnEnd = false;
 
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL,orphanRemoval = true)

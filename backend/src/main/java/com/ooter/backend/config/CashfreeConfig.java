@@ -23,7 +23,19 @@ public class CashfreeConfig implements InitializingBean {
     @Value("${CASHFREE_SECRET_KEY:}")
     private String secretKey;
 
-    private final String baseUrl = "https://api.cashfree.com/pg";
+    /**
+     * Supported:
+     * - CASHFREE_ENV=sandbox  -> https://sandbox.cashfree.com/pg
+     * - CASHFREE_ENV=production (default) -> https://api.cashfree.com/pg
+     * Override fully with CASHFREE_BASE_URL if needed.
+     */
+    @Value("${CASHFREE_ENV:production}")
+    private String env;
+
+    @Value("${CASHFREE_BASE_URL:}")
+    private String baseUrlOverride;
+
+    private String baseUrl;
 
     @Override
     public void afterPropertiesSet() {
@@ -33,7 +45,16 @@ public class CashfreeConfig implements InitializingBean {
         if (StringUtils.isBlank(secretKey)) {
             throw new PaymentConfigurationException("CASHFREE_SECRET_KEY is not configured");
         }
-        log.info("Cashfree configured (production)");
+
+        if (StringUtils.isNotBlank(baseUrlOverride)) {
+            baseUrl = baseUrlOverride.trim();
+        } else if ("sandbox".equalsIgnoreCase(env)) {
+            baseUrl = "https://sandbox.cashfree.com/pg";
+        } else {
+            baseUrl = "https://api.cashfree.com/pg";
+        }
+
+        log.info("Cashfree configured (env={}, baseUrl={})", env, baseUrl);
     }
 
     @Bean

@@ -67,6 +67,7 @@ public class CashfreeService {
         String url = cashfreeConfig.getBaseUrl() + "/orders";
 
         try {
+            logCurrentEgressIp();
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
                     url, HttpMethod.POST, request,
                     new ParameterizedTypeReference<Map<String, Object>>() {});
@@ -132,6 +133,16 @@ public class CashfreeService {
     public String getPaymentIdForOrder(String orderId) {
         // Cashfree Get Payments for Order - we can use order_id as transaction ref for simplicity
         return orderId;
+    }
+
+    /** Log current outbound IP (for Cashfree PG IP whitelist debugging). */
+    private void logCurrentEgressIp() {
+        try {
+            String ip = restTemplate.getForObject("https://api.ipify.org", String.class);
+            log.info("CASHFREE_EGRESS_IP: {} (add this in Payment Gateway dashboard if 403 IP not allowed)", ip != null ? ip.trim() : "unknown");
+        } catch (Exception e) {
+            log.warn("Could not fetch egress IP for logging: {}", e.getMessage());
+        }
     }
 
     @lombok.Value

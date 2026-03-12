@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
@@ -86,6 +87,15 @@ public class CashfreeService {
                 );
             }
             throw new PaymentException("Cashfree create order returned unexpected response");
+        } catch (HttpStatusCodeException e) {
+            String responseBody = e.getResponseBodyAsString();
+            log.error(
+                    "Cashfree create order failed: status={}, responseBody={}, requestId={}",
+                    e.getStatusCode().value(),
+                    responseBody != null ? responseBody : "[no body]",
+                    headers.getFirst("x-request-id")
+            );
+            throw new PaymentException("Failed to create payment order: " + e.getStatusCode().value() + " " + e.getStatusText(), e);
         } catch (Exception e) {
             log.error("Cashfree create order failed", e);
             if (e instanceof PaymentException) throw (PaymentException) e;
